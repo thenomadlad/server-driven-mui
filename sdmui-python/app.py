@@ -1,11 +1,14 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from flask import Flask, jsonify
+from sdmui_python.decorators import NiceTable, sdui_magic
+
 
 app = Flask(__name__)
 
 
+@sdui_magic(layout=NiceTable)
 @dataclass
-class DataPiece:
+class CalorieInformation:
     name: str
     calories: int
     fat: int
@@ -13,21 +16,22 @@ class DataPiece:
     protein: int
 
 
-def create_data(name: str, calories: int, fat: int, carbs: int, protein: int):
-    return DataPiece(name, calories, fat, carbs, protein)
-
-
 ROWS = [
-    create_data("Frozen yoghurt", 159, 6.0, 24, 4.0),
-    create_data("Ice cream sandwich", 237, 9.0, 37, 4.3),
-    create_data("Eclair", 262, 16.0, 24, 6.0),
-    create_data("Cupcake", 305, 3.7, 67, 4.3),
-    create_data("Gingerbread", 356, 16.0, 49, 3.9),
+    CalorieInformation("Frozen yoghurt", 159, 6.0, 24, 4.0),
+    CalorieInformation("Ice cream sandwich", 237, 9.0, 37, 4.3),
+    CalorieInformation("Eclair", 262, 16.0, 24, 6.0),
+    CalorieInformation("Cupcake", 305, 3.7, 67, 4.3),
+    CalorieInformation("Gingerbread", 356, 16.0, 49, 3.9),
 ]
 
 
-@app.route("/data/_sdui", methods=["GET"])
-def show_sdui_data():
+@app.route("/api/data", methods=["GET"])
+def all_data():
+    return jsonify(ROWS)
+
+
+@app.route("/raw_structure_demo/_sdui", methods=["GET"])
+def sdui_raw_data():
     return jsonify(
         [
             {
@@ -114,6 +118,32 @@ def show_sdui_data():
             },
         ]
     )
+
+
+@app.route("/nice_table_demo/_sdui", methods=["GET"])
+def sdui_nicetable():
+    return jsonify(
+        [
+            {
+                "component": "NiceTable",
+                "props": {
+                    "headings": [
+                        "Dessert (100g serving)",
+                        "Calories",
+                        "Fat (g)",
+                        "Carbs (g)",
+                        "Protein (g)",
+                    ],
+                    "rows": [asdict(row) for row in ROWS],
+                },
+            }
+        ]
+    )
+
+
+@app.route("/decorator_demo/_sdui", methods=["GET"])
+def sdui_generated():
+    return jsonify(CalorieInformation.to_sdmui(ROWS))
 
 
 if __name__ == "__main__":
