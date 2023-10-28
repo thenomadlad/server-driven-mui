@@ -11,9 +11,9 @@ app = Flask(__name__)
 class CalorieInformation:
     name: str
     calories: int
-    fat: int
+    fat: float
     carbs: int
-    protein: int
+    protein: float
 
 
 ROWS = [
