@@ -37,7 +37,7 @@ quadrantChart
     Retool: [0.75, 0.6]
     Wix: [0.75, 0.75]
     Hardcoded websites: [0.25, 0.25]
-    Hardcoded UI with CMS backend: [0.25, 0.75]
+    Hardcoded UI with CMS backend: [0.75, 0.25]
 ```
 
 ## Opportunity area
@@ -55,13 +55,13 @@ developers create UIs for their work:
 Thus our main objective is:
 
 > Create a developer focused server driven UI framework with which we can build
-UIs for common developer problems
+admin UIs for common developer problems
 
 ## Plan
 
 We will iteratively create a SDUI system in a series of prototypes
 
-### Prototype: material UI table
+### Prototype 1: material UI table
 
 use a JSON response from the server render a table:
 
@@ -71,19 +71,19 @@ use a JSON response from the server render a table:
   to be rendered - this is a basic minimal API which will be iterated on
 * render a basic table, without any editing capability
 
-### Prototype: material UI table with edits
+### Prototype 2: material UI table with edits
 
 All of the above with:
 
 * server requesting the frontend to render a form, and the action on the form
   gives us the ability to POST updates, and PUT new entries
 
-### Prototype: material UI table with rows that can be edited in place
+### Prototype 3: material UI table with rows that can be edited in place
 
 Instead of a form which updates or inserts, each row in a table can be
 triggered to edit and POST-ed to update the value in the row
 
-### Prototype: ideantify a grid view or a card view for the same data
+### Prototype 4: ideantify a grid view or a card view for the same data
 
 Render a different view, having the backend request the frontend to show
 different UI elements
