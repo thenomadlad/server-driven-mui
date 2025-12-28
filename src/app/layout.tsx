@@ -76,12 +76,14 @@ export default function RootLayout({
           <List>
             {LINKS.map(({ text, href, icon: Icon }) => (
               <ListItem key={href} disablePadding>
-                <ListItemButton component={Link} href={href}>
-                  <ListItemIcon>
-                    <Icon />
-                  </ListItemIcon>
-                  <ListItemText primary={text} />
-                </ListItemButton>
+                <Link href={href} style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <ListItemButton>
+                    <ListItemIcon>
+                      <Icon />
+                    </ListItemIcon>
+                    <ListItemText primary={text} />
+                  </ListItemButton>
+                </Link>
               </ListItem>
             ))}
           </List>

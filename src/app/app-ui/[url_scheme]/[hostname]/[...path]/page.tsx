@@ -3,15 +3,16 @@
 // fetches it (no-cache), and renders a simple WIP placeholder.
 // Later iterations will render UI based on the returned data.
 
-export default async function Page({
-  params,
-}: {
-  params: {
-    url_scheme: 'http' | 'https';
-    hostname: string;
-    path: string[];
-  };
-}) {
+export default async function Page(
+  props: {
+    params: Promise<{
+      url_scheme: 'http' | 'https';
+      hostname: string;
+      path: string[];
+    }>;
+  }
+) {
+  const params = await props.params;
   const targetUrl = `${params.url_scheme}://${decodeURIComponent(
     params.hostname
   )}/${decodeURIComponent(params.path.join('/'))}`;
