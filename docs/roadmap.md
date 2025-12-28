@@ -1,7 +1,7 @@
 # Roadmap
 
 The goal of a server driven UI framework is to make it possible for a backend
-server to determine what a frontend should render:
+server to determine what a frontend should render based on the data served:
 
 * there is a predetermined set of components that can be rendered
 * there is a contract that the backend and frontend both understand
@@ -59,40 +59,27 @@ admin UIs for common developer problems
 
 ## Plan
 
-We will iteratively create a SDUI system in a series of prototypes
+### Build out the skeleton of the SDMUI application
 
-### Prototype 1: material UI table
+The SDMUI application will follow this spec:
+1. a simple express app which serves `/app-ui/:url_scheme/:hostname/:path` (for example, a url like `/app-ui/https/localhost:8000/sdmui`)
+2. the app should have the ability to load data by hitting `{url_scheme}://{data_hostname}/{data_path}` (using above example, that would be `https://localhost:8000/sdmui`)
+3. the app should render some UI components based on that data, however, at the start, this part should return an empty div with a placehold "WIP"
 
-use a JSON response from the server render a table:
+### Iterative prototyping
 
-* use react and material UI component library for list of components that can
-  be rendered
-* create a contract of `componentName`, `props`, `children` for each component
-  to be rendered - this is a basic minimal API which will be iterated on
-* render a basic table, without any editing capability
+We will iteratively create a SDUI system in a series of prototypes and refactors.
+Each prototype will start with:
 
-### Prototype 2: material UI table with edits
+* an example express app in `test/example` which is a standalone server using port `8181` with one or many `/api/data` endpoints. Each endpoint can be used to read, create, update or delete some dummy data in memory
+* one or many `/sdmui/data` endpoints. Each endpoint returns a representation of the data in a format good for rendering
+* planned changes to main application `src/` directory to be able to render the UI using that new endpoint
+* playwright tests which start the application and the example api, and make sure that the `/http/localhost:8181/sdmui` will render expected components
 
-All of the above with:
+### Prototypes:
 
-* server requesting the frontend to render a form, and the action on the form
-  gives us the ability to POST updates, and PUT new entries
+- [Single element](./prototypes/01-single-entity-form.md)
+- [Table and TableRow view components](./prototypes/02-table.md)
 
-### Prototype 3: material UI table with rows that can be edited in place
-
-Instead of a form which updates or inserts, each row in a table can be
-triggered to edit and POST-ed to update the value in the row
-
-### Prototype 4: ideantify a grid view or a card view for the same data
-
-Render a different view, having the backend request the frontend to show
-different UI elements
-
-### Refactor: identify a better grammer or API
-
-Given a few UIs rendered for the basic use case of a REST api of different
-entities, identify a grammar of components that can be composed together to
-create higher order components. Have it so rendeing the SDUI on a client is
-just a matter of implementing the primitives
 
 
