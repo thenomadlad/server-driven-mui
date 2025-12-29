@@ -27,6 +27,9 @@ importers:
       '@mui/material':
         specifier: ^7.3.6
         version: 7.3.6(@emotion/react@11.14.0(@types/react@19.2.7)(react@19.2.3))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.7)(react@19.2.3))(@types/react@19.2.7)(react@19.2.3))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      jsonpath-plus:
+        specifier: ^7.2.0
+        version: 7.2.0
       next:
         specifier: 16.1.1
         version: 16.1.1(@babel/core@7.28.5)(@playwright/test@1.57.0)(babel-plugin-macros@3.1.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -36,6 +39,9 @@ importers:
       react-dom:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
       '@playwright/test':
         specifier: ^1.57.0
@@ -2669,6 +2675,10 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
+  jsonpath-plus@7.2.0:
+    resolution: {integrity: sha512-zBfiUPM5nD0YZSBT/o/fbCUlCcepMIdP0CJZxM1+KgA4f2T206f6VAg9e7mX35+KlMaIc5qXW34f3BnwJ3w+RA==}
+    engines: {node: '>=12.0.0'}
+
   jsx-ast-utils@3.3.5:
     resolution: {integrity: sha512-ZZow9HBI5O6EPgSJLUb8n2NKgmVWTwCvHGwFuJlMjvLFqlGG6pjirPhtdsseaLZjSibD8eegzmYpUZwoIlj2cQ==}
     engines: {node: '>=4.0'}
@@ -3683,8 +3693,8 @@ packages:
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
-  zod@4.2.1:
-    resolution: {integrity: sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==}
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
 
@@ -5745,8 +5755,8 @@ snapshots:
       '@babel/parser': 7.28.5
       eslint: 9.39.2(jiti@2.6.1)
       hermes-parser: 0.25.1
-      zod: 4.2.1
-      zod-validation-error: 4.0.2(zod@4.2.1)
+      zod: 3.25.76
+      zod-validation-error: 4.0.2(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
 
@@ -6737,6 +6747,8 @@ snapshots:
       minimist: 1.2.8
 
   json5@2.2.3: {}
+
+  jsonpath-plus@7.2.0: {}
 
   jsx-ast-utils@3.3.5:
     dependencies:
@@ -7824,8 +7836,8 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-validation-error@4.0.2(zod@4.2.1):
+  zod-validation-error@4.0.2(zod@3.25.76):
     dependencies:
-      zod: 4.2.1
+      zod: 3.25.76
 
-  zod@4.2.1: {}
+  zod@3.25.76: {}
