@@ -71,7 +71,7 @@ The SDMUI application will follow this spec:
 We will iteratively create a SDUI system in a series of prototypes and refactors.
 Each prototype will start with:
 
-* an example express app in `test/example` which is a standalone server using port `8181` with one or many `/api/data` endpoints. Each endpoint can be used to read, create, update or delete some dummy data in memory
+* an example express app in `tests/servers` which is a standalone server using port `8181` with one or many `/api/data` endpoints. Each endpoint can be used to read, create, update or delete some dummy data in memory
 * one or many `/sdmui/data` endpoints. Each endpoint returns a representation of the data in a format good for rendering
 * planned changes to main application `src/` directory to be able to render the UI using that new endpoint
 * playwright tests which start the application and the example api, and make sure that the `/http/localhost:8181/sdmui` will render expected components

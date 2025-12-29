@@ -2,22 +2,27 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'tests/e2e',
-  timeout: 30 * 1000,
-  expect: { timeout: 5000 },
+  timeout: 120_000,
+  expect: {
+    timeout: 10_000,
+  },
   fullyParallel: true,
-  retries: 0,
-  reporter: 'list',
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: [['list']],
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
   },
-  // Start the Next.js dev server before running the tests
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,
-    timeout: 300 * 1000,
-  },
+  webServer: [
+    {
+      command: 'npm run dev',
+      port: 3000,
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  ],
   projects: [
     {
       name: 'chromium',

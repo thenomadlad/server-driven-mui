@@ -1,9 +1,9 @@
 # Prototype 1: Single entity `Form` view
 
 This first prototype tackles the simplest need - the ability to view a single entity.
-We will create form elements and a submit butto to edit the entity as well.
+We will create form elements and a submit button to edit the entity as well.
 
-## `/api/data` endpoints
+## example server `/api/data` endpoints (address-book)
 
 For this prototype, let's pretend we are dealing with personal address data. This means we create APIs managing a few data entities:
 
@@ -50,7 +50,7 @@ return new CompanyFormView(company)
 
 implement the logic in the sdmui framework to render a form with an input for each field and indentation for sub-fields
 
-Also make sure that the form will only allow fields to be editable if they can be mapped to the PostRequest entity
+Also make sure that the form will only allow fields to be editable if they are included int he optional type provided by forUpdateCommand. If it is not editable, render the elements as normal uneditable html. If no type is provided via the forUpdateCommand function, we should allow all fields to be editable
 
 ## Playwright tests to consider
 
