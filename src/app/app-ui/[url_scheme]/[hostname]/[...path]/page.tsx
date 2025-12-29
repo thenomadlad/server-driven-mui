@@ -150,8 +150,36 @@ export default async function Page(
     }
   }
 
+  async function deleteAction(formData: FormData): Promise<SubmitResult> {
+    'use server';
+
+    if (!specNonNull.delete) {
+      return { ok: false, message: 'Delete not configured' };
+    }
+
+    const deleteUrl = new URL(specNonNull.delete.url, baseOrigin).toString();
+
+    try {
+      const res = await fetch(deleteUrl, {
+        method: specNonNull.delete.method,
+        cache: 'no-cache',
+      });
+      if (!res.ok) {
+        let msg = `Delete failed (${res.status})`;
+        try {
+          const data = await res.json();
+          if (data?.error) msg = String(data.error);
+        } catch {}
+        return { ok: false, message: msg };
+      }
+      return { ok: true, message: 'Deleted successfully' };
+    } catch (err: any) {
+      return { ok: false, message: err?.message || 'Network error' };
+    }
+  }
+
   return (
-    <FormShell action={submitAction}>
+    <FormShell action={submitAction} deleteAction={specNonNull.delete ? deleteAction : undefined}>
       <FormViewServerRenderer spec={specNonNull} entity={entityNonNull} />
     </FormShell>
   );

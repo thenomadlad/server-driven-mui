@@ -20,11 +20,17 @@ export interface SubmitDef {
   allowFields: FieldPath[];
 }
 
+export interface DeleteDef {
+  method: 'DELETE';
+  url: string;
+}
+
 export interface FormViewSpec {
   type: 'form';
   title: string;
   schema: JSONSchemaType<any>;
   submit: SubmitDef;
+  delete?: DeleteDef;
 }
 
 // ============================================================================
@@ -122,6 +128,7 @@ export class FormViewBuilder {
   private schema: JSONSchemaType<any>;
   private titleText: string;
   private submitDef: SubmitDef = { method: 'POST', url: '#', allowFields: [] };
+  private deleteDef?: DeleteDef;
 
   constructor(schema: JSONSchemaType<any>, title: string) {
     this.schema = schema;
@@ -147,6 +154,14 @@ export class FormViewBuilder {
   }
 
   /**
+   * Configure delete action
+   */
+  delete(def: DeleteDef): this {
+    this.deleteDef = def;
+    return this;
+  }
+
+  /**
    * Build the FormView for a specific entity
    * This method can be called multiple times with different entities
    */
@@ -156,6 +171,7 @@ export class FormViewBuilder {
       title: this.titleText,
       schema: this.schema,
       submit: this.submitDef,
+      ...(this.deleteDef && { delete: this.deleteDef }),
     };
     return FormView._internal_create<T>(spec, entity);
   }

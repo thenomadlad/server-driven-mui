@@ -294,6 +294,7 @@ function addressFormView(addr: Address): FormView<Address> {
   return FormView.fromSchema(jsonSchema, 'Address')
     .forUpdateCommand(updateSchema)
     .submit({ method: 'POST', url: `/api/address/${addr.id}` })
+    .delete({ method: 'DELETE', url: `/api/address/${addr.id}` })
     .buildForEntity(addr);
 }
 
@@ -304,6 +305,7 @@ function personFormView(person: Person): FormView<Person> {
   return FormView.fromSchema(jsonSchema, 'Person')
     .forUpdateCommand(updateSchema) // Email excluded, becomes read-only
     .submit({ method: 'POST', url: `/api/person/${person.id}` })
+    .delete({ method: 'DELETE', url: `/api/person/${person.id}` })
     .buildForEntity(person);
 }
 
@@ -314,6 +316,7 @@ function companyFormView(company: Company): FormView<Company> {
   return FormView.fromSchema(jsonSchema, 'Company')
     .forUpdateCommand(updateSchema)
     .submit({ method: 'POST', url: `/api/company/${company.id}` })
+    .delete({ method: 'DELETE', url: `/api/company/${company.id}` })
     .buildForEntity(company);
 }
 

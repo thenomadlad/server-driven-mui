@@ -56,6 +56,7 @@ function getLabel(schema: JSONSchemaType<any> | any, fieldName: string): string 
 
 export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec; entity: T }) {
   const { title, schema, submit } = spec;
+  const deleteSpec = spec.delete;
   const isEditable = (path: FieldPath) =>
     submit.allowFields.length === 0 || submit.allowFields.includes(path);
 
@@ -187,9 +188,21 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
 
   return (
     <Box sx={{ maxWidth: 720 }}>
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        {title}
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h5">
+          {title}
+        </Typography>
+        {deleteSpec && (
+          <Button
+            type="submit"
+            variant="outlined"
+            color="error"
+            formAction="?/delete"
+          >
+            Delete
+          </Button>
+        )}
+      </Box>
       {renderFields(schema)}
     </Box>
   );

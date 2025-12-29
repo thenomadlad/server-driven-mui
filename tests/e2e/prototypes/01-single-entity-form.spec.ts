@@ -27,7 +27,7 @@ async function waitForPort(port: number, host: string, timeoutMs: number) {
 
 let addressBookProc: ChildProcess | undefined;
 
-test.beforeAll(async () => {
+test.beforeEach(async () => {
   const cmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
   addressBookProc = spawn(cmd, ['run', 'server:address-book'], {
     stdio: 'inherit',
@@ -37,7 +37,7 @@ test.beforeAll(async () => {
   await waitForPort(8181, '127.0.0.1', 60_000);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (addressBookProc && addressBookProc.pid) {
     try {
       if (process.platform === 'win32') addressBookProc.kill();
@@ -207,6 +207,29 @@ test.describe('SDMUI E2E: company', () => {
     // Note: Actual add/remove functionality is not yet implemented in the UI
     // The form uses defaultValue (uncontrolled) and buttons have no onClick handlers
     // This test verifies that the buttons are properly enabled based on the schema
+  });
+
+  test('delete company entity', async ({ page }) => {
+    await page.goto(sdmuiUrl('sdmui/company/c-1'));
+
+    // Verify delete button is visible and enabled
+    const deleteButton = page.getByRole('button', { name: 'Delete', exact: true });
+    await expect(deleteButton).toBeVisible();
+    await expect(deleteButton).toBeEnabled();
+
+    // Click delete button and wait for navigation
+    await Promise.all([
+      page.waitForLoadState('networkidle'),
+      deleteButton.click()
+    ]);
+
+    // Wait for the success message to appear
+    await expect(page.locator('text=Deleted successfully')).toBeVisible({ timeout: 5000 });
+
+    // Verify the entity is deleted by trying to access it again
+    // The page should show "WIP" skeleton since the entity no longer exists
+    await page.goto(sdmuiUrl('sdmui/company/c-1'));
+    await expect(page.getByTestId('skeleton-wip')).toBeVisible();
   });
 });
 

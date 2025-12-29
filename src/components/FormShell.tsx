@@ -7,9 +7,11 @@ export type SubmitResult = { ok: boolean; message: string };
 
 export default function FormShell({
   action,
+  deleteAction,
   children,
 }: {
   action: (formData: FormData) => Promise<SubmitResult>;
+  deleteAction?: (formData: FormData) => Promise<SubmitResult>;
   children: React.ReactNode;
 }) {
   const [snack, setSnack] = React.useState<{ open: boolean; message: string; severity: 'success' | 'error' } | null>(null);
@@ -27,8 +29,13 @@ export default function FormShell({
     e.preventDefault();
     const form = e.currentTarget;
     const fd = new FormData(form);
+
+    // Check if this is a delete action
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement;
+    const isDelete = submitter?.formAction?.includes('?/delete');
+
     try {
-      const result = await action(fd);
+      const result = isDelete && deleteAction ? await deleteAction(fd) : await action(fd);
       if (result.ok) {
         // Persist message across reload
         window.sessionStorage.setItem('form_success', result.message || 'Saved successfully');
