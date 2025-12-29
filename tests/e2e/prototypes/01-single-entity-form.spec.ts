@@ -181,5 +181,32 @@ test.describe('SDMUI E2E: company', () => {
     await input.fill(value);
     await submit(page);
   });
+
+  test('employees array is editable (buttons enabled)', async ({ page }) => {
+    await page.goto(sdmuiUrl('sdmui/company/c-1'));
+
+    // Verify the employees section exists
+    const employeesSection = page.locator('text=Employees').first();
+    await expect(employeesSection).toBeVisible();
+
+    // Verify "Add employees" button exists and is enabled
+    const addButton = page.getByRole('button', { name: /Add employees/i });
+    await expect(addButton).toBeVisible();
+    await expect(addButton).toBeEnabled();
+
+    // Verify at least one employee is displayed
+    const employeeItem = page.locator('text=/Employees #1/i').first();
+    await expect(employeeItem).toBeVisible();
+
+    // Verify delete button for employee is enabled
+    const deleteButtons = page.getByRole('button').filter({ has: page.locator('[data-testid="DeleteIcon"]') });
+    const firstDeleteButton = deleteButtons.first();
+    await expect(firstDeleteButton).toBeVisible();
+    await expect(firstDeleteButton).toBeEnabled();
+
+    // Note: Actual add/remove functionality is not yet implemented in the UI
+    // The form uses defaultValue (uncontrolled) and buttons have no onClick handlers
+    // This test verifies that the buttons are properly enabled based on the schema
+  });
 });
 

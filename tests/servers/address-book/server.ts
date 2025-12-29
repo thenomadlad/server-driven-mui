@@ -5,6 +5,8 @@
 import express from 'express';
 import morgan from 'morgan';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 
 import { FormView } from '../../../src/api/FormView';
 
@@ -15,16 +17,50 @@ app.use(express.json());
 app.use(morgan('combined'));
 
 // --- In-memory data models ---
-// Address
-// { id: string, street1: string, street2?: string | null, state: 'CA'|'MA'|'NY', zipcode: number }
-// Person
-// { id: string, fullName: string, phone: string, email: string, address: Address }
-// Company
-// { id: string, name: string, address: Address, employees: Person[], roles: Record<string, string /* personId */> }
+// Zod schemas for validation and type inference
+const AddressSchema = z.object({
+  id: z.string(),
+  street1: z.string().min(1).describe('Street 1'),
+  street2: z.string().nullable().describe('Street 2'),
+  state: z.enum(['CA', 'MA', 'NY']).describe('State'),
+  zipcode: z.number().int().min(10000).max(99999).describe('Zip Code'),
+});
 
-type Address = { id: string; street1: string; street2: string | null; state: 'CA' | 'MA' | 'NY'; zipcode: number };
-type Person = { id: string; fullName: string; phone: string; email: string; address: Address };
-type Company = { id: string; name: string; address: Address; employees: Person[]; roles: Record<string, string> };
+const PersonSchema = z.object({
+  id: z.string(),
+  fullName: z.string().min(1).describe('Full Name'),
+  phone: z.string().describe('Phone'),
+  email: z.string().email().describe('Email'),
+  address: AddressSchema.describe('Address'),
+});
+
+const CompanySchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).describe('Name'),
+  address: AddressSchema.describe('Address'),
+  employees: z.array(PersonSchema),
+  roles: z.record(z.string()),
+});
+
+// Update schemas - define which fields are editable
+const UpdateAddressSchema = AddressSchema.omit({ id: true });
+
+const UpdatePersonSchema = PersonSchema.omit({ id: true, email: true }).extend({
+  address: UpdateAddressSchema,
+});
+
+const UpdateCompanySchema = CompanySchema.pick({ name: true }).extend({
+  address: UpdateAddressSchema,
+  employees: z.array(PersonSchema),
+});
+
+// Inferred types
+type Address = z.infer<typeof AddressSchema>;
+type Person = z.infer<typeof PersonSchema>;
+type Company = z.infer<typeof CompanySchema>;
+
+type UpdatePerson = z.infer<typeof UpdatePersonSchema>;
+type UpdateCompany = z.infer<typeof UpdateCompanySchema>;
 
 let addresses: Record<string, Address> = {
   'addr-1': { id: 'addr-1', street1: '1 Main St', street2: null, state: 'CA', zipcode: 94105 },
@@ -92,16 +128,15 @@ app.post('/api/address', (req: Request, res: Response) => {
 app.post('/api/address/:id', (req, res) => {
   const curr = addresses[req.params.id];
   if (!curr) return res.status(404).json({ error: 'Not found' });
-  const { street1, street2 = null, state, zipcode } = req.body || {};
-  if (
-    (street1 !== undefined && !street1) ||
-    (state !== undefined && !STATES.includes(state)) ||
-    (zipcode !== undefined && !isZipcode(zipcode))
-  ) {
-    console.error(`Invalid fields: ${JSON.stringify(req.body)}`);
-    return res.status(400).json({ error: 'Invalid address update' });
+
+  // Validate with Zod - partial update
+  const result = UpdateAddressSchema.partial().safeParse(req.body);
+  if (!result.success) {
+    console.error(`Invalid fields: ${JSON.stringify(result.error.errors)}`);
+    return res.status(400).json({ error: 'Invalid address update', details: result.error.errors });
   }
-  const updated = { ...curr, ...req.body };
+
+  const updated: Address = { ...curr, ...result.data };
   addresses[updated.id] = updated;
   res.json(updated);
 });
@@ -109,16 +144,15 @@ app.post('/api/address/:id', (req, res) => {
 app.put('/api/address/:id', (req, res) => {
   const curr = addresses[req.params.id];
   if (!curr) return res.status(404).json({ error: 'Not found' });
-  const { street1, street2 = null, state, zipcode } = req.body || {};
-  if (
-    (street1 !== undefined && !street1) ||
-    (state !== undefined && !STATES.includes(state)) ||
-    (zipcode !== undefined && !isZipcode(zipcode))
-  ) {
-    console.error(`Invalid fields: ${JSON.stringify(req.body)}`);
-    return res.status(400).json({ error: 'Invalid address update' });
+
+  // Validate with Zod - full update
+  const result = UpdateAddressSchema.safeParse(req.body);
+  if (!result.success) {
+    console.error(`Invalid fields: ${JSON.stringify(result.error.errors)}`);
+    return res.status(400).json({ error: 'Invalid address update', details: result.error.errors });
   }
-  const updated = { ...curr, ...req.body };
+
+  const updated: Address = { ...curr, ...result.data };
   addresses[updated.id] = updated;
   res.json(updated);
 });
@@ -156,16 +190,20 @@ app.post('/api/person', (req, res) => {
 app.post('/api/person/:id', (req, res) => {
   const curr = persons[req.params.id];
   if (!curr) return res.status(404).json({ error: 'Not found' });
-  const { fullName, phone, email, address } = req.body || {};
-  if (email !== undefined) {
-    // In prototype, email is read-only via /sdmui update mapping, but REST allows update for simplicity
+
+  // Validate with Zod - partial update
+  const result = UpdatePersonSchema.partial().safeParse(req.body);
+  if (!result.success) {
+    console.error(`Invalid fields: ${JSON.stringify(result.error.errors)}`);
+    return res.status(400).json({ error: 'Invalid person update', details: result.error.errors });
   }
-  const updated = {
+
+  const updateData: Partial<UpdatePerson> = result.data;
+  const updated: Person = {
     ...curr,
-    ...(fullName !== undefined ? { fullName } : {}),
-    ...(phone !== undefined ? { phone } : {}),
-    ...(email !== undefined ? { email } : {}),
-    ...(address?.id && addresses[address.id] ? { address: addresses[address.id] } : {}),
+    ...(updateData.fullName !== undefined ? { fullName: updateData.fullName } : {}),
+    ...(updateData.phone !== undefined ? { phone: updateData.phone } : {}),
+    ...(updateData.address !== undefined ? { address: { ...curr.address, ...updateData.address } } : {}),
   };
   persons[updated.id] = updated;
   res.json(updated);
@@ -174,13 +212,20 @@ app.post('/api/person/:id', (req, res) => {
 app.put('/api/person/:id', (req, res) => {
   const curr = persons[req.params.id];
   if (!curr) return res.status(404).json({ error: 'Not found' });
-  const { fullName, phone, email, address } = req.body || {};
-  const updated = {
+
+  // Validate with Zod - full update
+  const result = UpdatePersonSchema.safeParse(req.body);
+  if (!result.success) {
+    console.error(`Invalid fields: ${JSON.stringify(result.error.errors)}`);
+    return res.status(400).json({ error: 'Invalid person update', details: result.error.errors });
+  }
+
+  const updateData: UpdatePerson = result.data;
+  const updated: Person = {
     ...curr,
-    ...(fullName !== undefined ? { fullName } : {}),
-    ...(phone !== undefined ? { phone } : {}),
-    ...(email !== undefined ? { email } : {}),
-    ...(address?.id && addresses[address.id] ? { address: addresses[address.id] } : {}),
+    fullName: updateData.fullName,
+    phone: updateData.phone,
+    address: { ...curr.address, ...updateData.address },
   };
   persons[updated.id] = updated;
   res.json(updated);
@@ -220,103 +265,56 @@ app.post('/api/company', (req, res) => {
 app.post('/api/company/:id', (req, res) => {
   const curr = companies[req.params.id];
   if (!curr) return res.status(404).json({ error: 'Not found' });
-  const { name, address, employees, roles } = req.body || {};
+
+  // Validate with Zod - partial update
+  const result = UpdateCompanySchema.partial().safeParse(req.body);
+  if (!result.success) {
+    console.error(`Invalid fields: ${JSON.stringify(result.error.errors)}`);
+    return res.status(400).json({ error: 'Invalid company update', details: result.error.errors });
+  }
+
+  const updateData: Partial<UpdateCompany> = result.data;
   const updated: Company = {
     ...curr,
-    ...(name !== undefined ? { name } : {}),
-    ...(address?.id && addresses[address.id] ? { address: addresses[address.id] } : {}),
-    ...(Array.isArray(employees)
-      ? { employees: employees.map((e: any) => (e?.id && persons[e.id] ? persons[e.id] : null)).filter((p: any): p is Person => Boolean(p)) }
-      : {}),
-    ...(roles && typeof roles === 'object' ? { roles } : {}),
+    ...(updateData.name !== undefined ? { name: updateData.name } : {}),
+    ...(updateData.address !== undefined ? { address: { ...curr.address, ...updateData.address } } : {}),
+    ...(updateData.employees !== undefined ? { employees: updateData.employees } : {}),
   };
   companies[updated.id] = updated;
   res.json(updated);
 });
 
 // --- SDMUI endpoints ---
-// FormView descriptor structure (simple, prototype-only)
-// {
-//   type: 'form',
-//   title: string,
-//   fields: Array<{
-//     name: string,
-//     label: string,
-//     input: 'text' | 'number' | 'select' | 'group',
-//     readOnly?: boolean,
-//     options?: Array<{ label: string, value: string }>,
-//     children?: same as fields,
-//   }>,
-//   submit: {
-//     method: 'POST',
-//     url: string,
-//     // controls which fields are sent; frontend should only send allowed fields
-//     allowFields: string[] // dot.notation for nested
-//   }
-// }
+// Using JSON Schema for FormView API
 
-function addressFormView(addr: Address) {
-  const fv = FormView
-    .forEntity(addr)
-    .title('Address')
-    .fieldsAll([
-      { name: 'street1', label: 'Street 1', input: 'text' },
-      { name: 'street2', label: 'Street 2', input: 'text' },
-      { name: 'state', label: 'State', input: 'select', options: STATES.map((s) => ({ label: s, value: s })) },
-      { name: 'zipcode', label: 'Zip Code', input: 'number' },
-    ])
-    .submit({ method: 'POST', url: `/api/address/${addr.id}`, allowFields: [] })
-    .forUpdateCommand({ street1: '', street2: '', state: 'CA', zipcode: 0 })
-    .build();
-  return fv.toSpec();
+function addressFormView(addr: Address): FormView<Address> {
+  const jsonSchema = zodToJsonSchema(AddressSchema) as any;
+  const updateSchema = zodToJsonSchema(UpdateAddressSchema) as any;
+
+  return FormView.fromSchema(jsonSchema, 'Address')
+    .forUpdateCommand(updateSchema)
+    .submit({ method: 'POST', url: `/api/address/${addr.id}` })
+    .buildForEntity(addr);
 }
 
-function personFormView(person: Person) {
-  const fv = FormView
-    .forEntity(person)
-    .title('Person')
-    .fieldsAll([
-      { name: 'fullName', label: 'Full Name', input: 'text' },
-      { name: 'phone', label: 'Phone', input: 'text' },
-      { name: 'email', label: 'Email', input: 'text' },
-      {
-        name: 'address',
-        label: 'Address',
-        input: 'group',
-        children: addressFormView(person.address).fields,
-      },
-    ])
-    .submit({ method: 'POST', url: `/api/person/${person.id}`, allowFields: [] })
-    // Exclude email from update command to make it read-only
-    .forUpdateCommand({ fullName: '', phone: '', address: { street1: '', street2: '', state: 'CA', zipcode: 0 } })
-    .build();
-  return fv.toSpec();
+function personFormView(person: Person): FormView<Person> {
+  const jsonSchema = zodToJsonSchema(PersonSchema) as any;
+  const updateSchema = zodToJsonSchema(UpdatePersonSchema) as any;
+
+  return FormView.fromSchema(jsonSchema, 'Person')
+    .forUpdateCommand(updateSchema) // Email excluded, becomes read-only
+    .submit({ method: 'POST', url: `/api/person/${person.id}` })
+    .buildForEntity(person);
 }
 
-function companyFormView(company: Company) {
-  return {
-    type: 'form',
-    title: 'Company',
-    fields: [
-      { name: 'name', label: 'Name', input: 'text' },
-      { name: 'address', label: 'Address', input: 'group', children: addressFormView(company.address).fields },
-      {
-        name: 'employees',
-        label: 'Employees',
-        input: 'group',
-        // For simplicity, we won't render dynamic list editing in this prototype; just show nested person fields read-only
-        children: [
-          { name: '[0].fullName', label: 'First Employee Name', input: 'text', readOnly: true },
-        ],
-      },
-    ],
-    submit: {
-      method: 'POST',
-      url: `/api/company/${company.id}`,
-      allowFields: ['name', 'address.street1', 'address.street2', 'address.state', 'address.zipcode'],
-    },
-    entity: company,
-  };
+function companyFormView(company: Company): FormView<Company> {
+  const jsonSchema = zodToJsonSchema(CompanySchema) as any;
+  const updateSchema = zodToJsonSchema(UpdateCompanySchema) as any;
+
+  return FormView.fromSchema(jsonSchema, 'Company')
+    .forUpdateCommand(updateSchema)
+    .submit({ method: 'POST', url: `/api/company/${company.id}` })
+    .buildForEntity(company);
 }
 
 app.get('/sdmui/address/:id', (req, res) => {

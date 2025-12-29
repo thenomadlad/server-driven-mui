@@ -1,228 +1,163 @@
-// Generic FormView for single-entity forms with optional update-command constraints
-// Prototype 1: build a form description and render a MUI form for a given entity
-// - Build from any entity T via a fluent builder
-// - Optionally constrain editable fields via forUpdateCommand<U>() by passing a runtime "shape" of U
+// Generic FormView for single-entity forms with JSON Schema support
+// Build forms from JSON Schema with automatic field rendering
+// - Optionally constrain editable fields via forUpdateCommand() by passing a JSON Schema
 // - Renderer respects allowed fields and sets inputs to read-only when disallowed
+// - Supports arrays with add/remove buttons
 
-import { Box, MenuItem, TextField, Typography } from '@mui/material';
+import { type JSONSchemaType } from 'ajv';
 
-// Primitive field inputs supported in prototype 1
-export type InputKind = 'text' | 'number' | 'select' | 'group';
+// ============================================================================
+// Type Definitions
+// ============================================================================
 
-export type FieldPath = string; // dot notation e.g. "address.street1"
-
-export interface FieldDef {
-  name: FieldPath;
-  label: string;
-  input: InputKind;
-  readOnly?: boolean;
-  // For select inputs
-  options?: Array<{ label: string; value: string | number }>;
-  // For group inputs
-  children?: FieldDef[];
-}
+// JSON-path format: $.property, $.array[], $.nested.property
+export type FieldPath = string;
 
 export interface SubmitDef {
   method: 'POST' | 'PUT' | 'PATCH';
   url: string;
-  // dot-notation allowed fields for submission and editability
+  // JSON-path allowed fields for submission and editability
   allowFields: FieldPath[];
 }
 
-export interface FormViewSpec<T> {
+export interface FormViewSpec {
   type: 'form';
   title: string;
-  fields: FieldDef[];
+  schema: JSONSchemaType<any>;
   submit: SubmitDef;
-  entity: T;
 }
 
-// Utility to read nested values by dot notation
-function getByPath(obj: any, path: FieldPath) {
-  return path.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
-}
+// ============================================================================
+// Utility Functions
+// ============================================================================
 
-// DeepPartial helper for deriving update-command shapes at runtime
-export type DeepPartial<T> = {
-  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
-};
+// Extract field paths from JSON Schema (keep as-is per requirements)
+function extractFieldPaths(schema: JSONSchemaType<any>, prefix = '$'): FieldPath[] {
+  const paths: FieldPath[] = [];
 
-function isPlainObject(v: any) {
-  return Object.prototype.toString.call(v) === '[object Object]';
-}
+  if (schema.type === 'object' && schema.properties) {
+    for (const key in schema.properties) {
+      const fieldPath = `${prefix}.${key}`;
+      const propSchema = schema.properties[key];
 
-// Collect dot-notation paths for leaf properties of an object shape
-function collectPaths(obj: any, prefix = ''): string[] {
-  if (!isPlainObject(obj)) return [];
-  const out: string[] = [];
-  for (const k of Object.keys(obj)) {
-    const full = prefix ? `${prefix}.${k}` : k;
-    const val = (obj as any)[k];
-    if (isPlainObject(val)) {
-      out.push(...collectPaths(val, full));
+      if (propSchema.type === 'object') {
+        paths.push(...extractFieldPaths(propSchema, fieldPath));
+      } else if (propSchema.type === 'array') {
+        // Include the array field itself
+        paths.push(fieldPath);
+        // Also include nested paths within array items
+        const arrayItemPath = `${fieldPath}[]`;
+        const itemSchema = propSchema.items;
+        if (itemSchema.type === 'object' || itemSchema.type === 'array') {
+          paths.push(...extractFieldPaths(itemSchema, arrayItemPath));
+        } else {
+          paths.push(arrayItemPath);
+        }
+      } else {
+        paths.push(fieldPath);
+      }
+    }
+  } else if (schema.type === 'array' && schema.items) {
+    const fieldPath = `${prefix}[]`;
+    const propSchema = schema.items;
+
+    if (propSchema.type === 'object' || propSchema.type === 'array') {
+      paths.push(...extractFieldPaths(propSchema, fieldPath));
     } else {
-      out.push(full);
+      paths.push(fieldPath);
     }
   }
-  return out;
+
+  return paths;
 }
 
-// Server-only renderer: no hooks, uncontrolled inputs; this renders only fields and layout
-export function FormViewServerRenderer<T>({ spec }: { spec: FormViewSpec<T> }) {
-  const { title, fields, entity, submit } = spec;
-  const isEditable = (path: FieldPath) => submit.allowFields.length === 0 || submit.allowFields.includes(path);
+// ============================================================================
+// FormView Class
+// ============================================================================
 
-  // Render a field, qualifying child names under a group with the parent path
-  const renderField = (f: FieldDef, parentPath?: string) => {
-    // Build a fully-qualified dot path for this field
-    const qualifyName = (name: string, parent?: string) => {
-      if (!parent) return name;
-      // If the name appears to be absolute (starts with a top-level entity key), don't prefix
-      const topKeys = entity && typeof entity === 'object' ? Object.keys(entity as any) : [];
-      const firstSeg = name.split('.')[0];
-      if (topKeys.includes(firstSeg)) return name;
-      return `${parent}.${name}`;
-    };
-
-    const fullPath = qualifyName(f.name, parentPath);
-
-    if (f.input === 'group') {
-      return (
-        <Box key={fullPath} sx={{ pl: 2, borderLeft: '2px solid #eee', mt: 1 }}>
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>
-            {f.label}
-          </Typography>
-          {f.children?.map((child) => renderField(child, fullPath))}
-        </Box>
-      );
-    }
-
-    const value = getByPath(entity as any, fullPath) ?? '';
-    const disabled = f.readOnly === true || !isEditable(fullPath);
-    const commonProps = {
-      key: fullPath,
-      name: fullPath,
-      label: f.label,
-      defaultValue: value,
-      fullWidth: true,
-      margin: 'normal' as const,
-      disabled,
-    };
-    if (f.input === 'select') {
-      return (
-        <TextField select {...commonProps}>
-          {f.options?.map((opt) => (
-            <MenuItem key={String(opt.value)} value={opt.value}>
-              {opt.label}
-            </MenuItem>
-          ))}
-        </TextField>
-      );
-    }
-    return <TextField type={f.input === 'number' ? 'number' : 'text'} {...commonProps} />;
-  };
-
-  return (
-    <Box sx={{ maxWidth: 720 }}>
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        {title}
-      </Typography>
-      {fields.map((f) => renderField(f))}
-    </Box>
-  );
-}
-
-// FormView builder
 export class FormView<T> {
-  private spec: FormViewSpec<T>;
+  private spec: FormViewSpec;
+  private _entity: T;
 
-  constructor(spec: FormViewSpec<T>) {
+  private constructor(spec: FormViewSpec, entity: T) {
     this.spec = spec;
+    this._entity = entity;
   }
 
-  static forEntity<T>(entity: T) {
-    return new FormViewBuilder<T>(entity);
+  get entity(): T {
+    return this._entity;
+  }
+
+  /**
+   * Create a FormView builder from a JSON Schema.
+   * This is the only way to construct a FormView.
+   */
+  static fromSchema(schema: JSONSchemaType<any>, title: string): FormViewBuilder {
+    return new FormViewBuilder(schema, title);
   }
 
   // Expose spec for testing/inspection and JSON serialization
-  toSpec(): FormViewSpec<T> {
+  toSpec(): FormViewSpec {
     return this.spec;
   }
 
-  toJSON(): string {
-    return JSON.stringify(this.spec);
+  toJSON(): { spec: FormViewSpec; entity: T } {
+    return { spec: this.spec, entity: this._entity };
   }
 
-  static from<T>(spec: FormViewSpec<T>): FormView<T> {
-    return new FormView<T>(spec);
-  }
-
-  static fromJSON<T>(json: string): FormView<T> {
-    const spec = JSON.parse(json) as FormViewSpec<T>;
-    return new FormView<T>(spec);
+  /**
+   * Internal method used by FormViewBuilder to construct FormView instances
+   * @internal
+   */
+  static _internal_create<T>(spec: FormViewSpec, entity: T): FormView<T> {
+    return new FormView<T>(spec, entity);
   }
 }
 
-// Fluent builder to construct a FormView for an entity
-export class FormViewBuilder<T> {
-  private entity: T;
-  private titleText: string = 'Form';
-  private fields: FieldDef[] = [];
+// ============================================================================
+// FormView Builder
+// ============================================================================
+
+export class FormViewBuilder {
+  private schema: JSONSchemaType<any>;
+  private titleText: string;
   private submitDef: SubmitDef = { method: 'POST', url: '#', allowFields: [] };
 
-  constructor(entity: T) {
-    this.entity = entity;
-  }
-
-  title(title: string) {
+  constructor(schema: JSONSchemaType<any>, title: string) {
+    this.schema = schema;
     this.titleText = title;
+  }
+
+  /**
+   * Define which fields are editable by passing an update schema.
+   * Only fields present in the update schema will be editable.
+   */
+  forUpdateCommand(updateSchema: JSONSchemaType<any>): this {
+    const allowFields = extractFieldPaths(updateSchema);
+    this.submitDef = { ...this.submitDef, allowFields };
     return this;
   }
 
-  field(field: FieldDef) {
-    this.fields.push(field);
+  /**
+   * Configure form submission
+   */
+  submit(def: Partial<SubmitDef>): this {
+    this.submitDef = { ...this.submitDef, ...def };
     return this;
   }
 
-  fieldsAll(fields: FieldDef[]) {
-    this.fields.push(...fields);
-    return this;
+  /**
+   * Build the FormView for a specific entity
+   * This method can be called multiple times with different entities
+   */
+  buildForEntity<T>(entity: T): FormView<T> {
+    const spec: FormViewSpec = {
+      type: 'form',
+      title: this.titleText,
+      schema: this.schema,
+      submit: this.submitDef,
+    };
+    return FormView._internal_create<T>(spec, entity);
   }
-
-  // Define which fields are editable by passing a runtime shape of T.
-  // Only fields present in both the entity and the shape will be editable and included in the submit payload.
-  forUpdateCommand(shape: DeepPartial<T>) {
-    const candidate = new Set(collectPaths(shape));
-    const intersection: FieldPath[] = [];
-    // Intersect with actual fields present in the entity spec if possible
-    const entityPaths = new Set(allFieldPathsFromEntity(this.entity));
-    candidate.forEach((p) => {
-      if (entityPaths.has(p)) intersection.push(p);
-    });
-    this.submitDef = { ...this.submitDef, allowFields: intersection };
-    return this;
-  }
-
-  submit(def: SubmitDef) {
-    this.submitDef = def;
-    return this;
-  }
-
-  build(): FormView<T> {
-    return new FormView<T>({ type: 'form', title: this.titleText, fields: this.fields, submit: this.submitDef, entity: this.entity });
-  }
-}
-
-// Attempt to infer possible field paths from the provided entity instance at runtime
-function allFieldPathsFromEntity(obj: any, prefix = ''): FieldPath[] {
-  if (!isPlainObject(obj)) return [];
-  const out: FieldPath[] = [];
-  for (const k of Object.keys(obj)) {
-    const full = prefix ? `${prefix}.${k}` : k;
-    const v = obj[k];
-    if (isPlainObject(v)) out.push(...allFieldPathsFromEntity(v, full));
-    else out.push(full);
-  }
-  return out;
 }
 

@@ -1,6 +1,7 @@
-import { FormViewServerRenderer, type FormViewSpec, type FieldDef } from '@/api/FormView';
+import { type FormViewSpec } from '@/api/FormView';
+import { FormViewServerRenderer } from '@/theme/simple';
 import FormShell, { type SubmitResult } from '@/components/FormShell';
-
+import { type JSONSchemaType } from 'ajv';
 
 // Server-side SDMUI route
 // - Builds the target backend URL from route params
@@ -8,14 +9,38 @@ import FormShell, { type SubmitResult } from '@/components/FormShell';
 // - Renders a fully server-side form that submits to a Next.js Server Action
 // - The server action filters fields per allowFields and forwards JSON to the backend submit URL
 
+// Helper to set nested value by JSON-path ($.prop or prop.nested)
 function setByPath(obj: any, path: string, value: any) {
-  const parts = path.split('.');
+  // Remove leading $ if present
+  const cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
+
+  const parts = cleanPath.split('.');
   const last = parts.pop() as string;
   const target = parts.reduce((acc, k) => {
     if (acc[k] == null || typeof acc[k] !== 'object') acc[k] = {};
     return acc[k];
   }, obj);
   target[last] = value;
+}
+
+// Extract field type info from JSON Schema for coercion
+function getFieldType(schema: JSONSchemaType<any>, path: string): { type: string; enum?: any[] } | null {
+  // Remove leading $ if present
+  const cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
+
+  const parts = cleanPath.split('.');
+  let current: any = schema;
+
+  for (const part of parts) {
+    if (!current || current.type !== 'object' || !current.properties) return null;
+    current = current.properties[part];
+    if (!current) return null;
+  }
+
+  return {
+    type: current.type || 'string',
+    enum: current.enum,
+  };
 }
 
 export default async function Page(
@@ -32,70 +57,54 @@ export default async function Page(
     params.hostname
   )}/${decodeURIComponent(params.path.join('/'))}`;
 
-  let spec: FormViewSpec<any> | null = null;
+  let spec: FormViewSpec | null = null;
+  let entity: any = null;
   try {
     const res = await fetch(targetUrl, { cache: 'no-cache' });
     if (res.ok) {
       const data = await res.json();
-      spec = data as FormViewSpec<any>;
+      spec = data.spec as FormViewSpec;
+      entity = data.entity;
     }
   } catch (err) {
-    console.error("Failure fetching data for render", err);
+    console.error('Failure fetching data for render', err);
   }
 
-  if (!spec) {
+  if (!spec || !entity) {
     return <div data-testid="skeleton-wip">WIP</div>;
   }
 
-  const specNonNull = spec as FormViewSpec<any>;
+  const specNonNull = spec as FormViewSpec;
+  const entityNonNull = entity;
   const baseOrigin = new URL(targetUrl).origin;
 
   async function submitAction(formData: FormData): Promise<SubmitResult> {
     'use server';
 
-    // Flatten fields from spec, computing fully-qualified dot paths for nested groups
-    function flattenFields(fields: FieldDef[], prefix = ''): Array<{ path: string; def: FieldDef }> {
-      const out: Array<{ path: string; def: FieldDef }> = [];
-      for (const f of fields) {
-        const full = prefix ? `${prefix}.${f.name}` : f.name;
-        if (f.input === 'group' && Array.isArray(f.children)) {
-          out.push(...flattenFields(f.children, full));
-        } else {
-          out.push({ path: full, def: f });
-        }
-      }
-      return out;
-    }
+    // Determine which fields are allowed to be sent (using JSON-path format)
+    const allow =
+      Array.isArray(specNonNull.submit.allowFields) && specNonNull.submit.allowFields.length > 0
+        ? new Set(specNonNull.submit.allowFields)
+        : null; // null => allow all posted fields
 
-    const flat = flattenFields(specNonNull.fields);
-    const fieldMap = new Map<string, FieldDef>(flat.map(({ path, def }) => [path, def]));
-
-    // Determine which fields are allowed to be sent
-    const allow = Array.isArray(specNonNull.submit.allowFields) && specNonNull.submit.allowFields.length > 0
-      ? new Set(specNonNull.submit.allowFields)
-      : null; // null => allow all posted fields
-
-    // Try to resolve a posted name to a fully-qualified path from the spec
-    function resolvePath(name: string): string | null {
-      if (fieldMap.has(name)) return name;
-      // Fallback: match by suffix if the spec used nested paths but inputs used short names
-      const candidates = flat.filter(f => f.path.endsWith(`.${name}`));
-      if (candidates.length === 1) return candidates[0].path;
-      return null;
-    }
-
-    // Coerce string values based on field definition
-    function coerceValue(def: FieldDef, raw: string): any {
-      if (def.input === 'number') {
+    // Coerce string values based on JSON Schema type
+    function coerceValue(fieldType: { type: string; enum?: any[] }, raw: string): any {
+      if (fieldType.type === 'number' || fieldType.type === 'integer') {
         // Interpret empty string as null to avoid NaN
         if (raw.trim() === '') return null;
         const n = Number(raw);
         return Number.isFinite(n) ? n : null;
       }
-      if (def.input === 'select' && Array.isArray(def.options)) {
-        // If options contain numeric values, coerce accordingly
-        const opt = def.options.find(o => String(o.value) === raw);
-        return opt ? opt.value : raw;
+      if (fieldType.type === 'boolean') {
+        return raw === 'true';
+      }
+      if (fieldType.enum && Array.isArray(fieldType.enum)) {
+        // If enum contains numeric values, coerce accordingly
+        const numValue = Number(raw);
+        if (!isNaN(numValue) && fieldType.enum.includes(numValue)) {
+          return numValue;
+        }
+        return raw;
       }
       // Default: keep string
       return raw;
@@ -104,14 +113,18 @@ export default async function Page(
     const payload: any = {};
     formData.forEach((value, postedName) => {
       if (typeof value !== 'string') return; // ignore File for now
-      const path = resolvePath(postedName);
-      if (!path) return; // not in spec
-      if (allow && !allow.has(path)) return; // not allowed by spec
-      const def = fieldMap.get(path)!;
-      const coerced = coerceValue(def, value);
+
+      // Check if this field is allowed
+      if (allow && !allow.has(postedName)) return;
+
+      // Get field type from schema
+      const fieldType = getFieldType(specNonNull.schema, postedName);
+      if (!fieldType) return; // not in schema
+
+      const coerced = coerceValue(fieldType, value);
       // Skip undefined; allow null for explicit clearing when supported by backend
       if (coerced === undefined) return;
-      setByPath(payload, path, coerced);
+      setByPath(payload, postedName, coerced);
     });
 
     const submitUrl = new URL(specNonNull.submit.url, baseOrigin).toString();
@@ -139,7 +152,7 @@ export default async function Page(
 
   return (
     <FormShell action={submitAction}>
-      <FormViewServerRenderer spec={specNonNull} />
+      <FormViewServerRenderer spec={specNonNull} entity={entityNonNull} />
     </FormShell>
   );
 }
