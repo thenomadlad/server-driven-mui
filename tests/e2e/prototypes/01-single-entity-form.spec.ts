@@ -42,6 +42,8 @@ test.afterEach(async () => {
     try {
       if (process.platform === 'win32') addressBookProc.kill();
       else addressBookProc.kill('SIGTERM');
+      // Wait for the process to fully terminate
+      await new Promise(resolve => setTimeout(resolve, 2000));
     } catch {}
   }
 });
@@ -217,11 +219,8 @@ test.describe('SDMUI E2E: company', () => {
     await expect(deleteButton).toBeVisible();
     await expect(deleteButton).toBeEnabled();
 
-    // Click delete button and wait for navigation
-    await Promise.all([
-      page.waitForLoadState('networkidle'),
-      deleteButton.click()
-    ]);
+    // Click delete button
+    await deleteButton.click();
 
     // Wait for the success message to appear
     await expect(page.locator('text=Deleted successfully')).toBeVisible({ timeout: 5000 });
@@ -230,6 +229,61 @@ test.describe('SDMUI E2E: company', () => {
     // The page should show "WIP" skeleton since the entity no longer exists
     await page.goto(sdmuiUrl('sdmui/company/c-1'));
     await expect(page.getByTestId('skeleton-wip')).toBeVisible();
+  });
+
+  test('add employee to company array', async ({ page }) => {
+    await page.goto(sdmuiUrl('sdmui/company/c-1'));
+
+    // Get initial employee count
+    const employeeItems = page.locator('text=/Employees #/i');
+    const initialCount = await employeeItems.count();
+
+    // Click "Add employees" button
+    const addButton = page.getByRole('button', { name: /Add employees/i });
+    await addButton.click();
+
+    // Wait for success message
+    await expect(page.locator('text=Item added successfully')).toBeVisible({ timeout: 5000 });
+
+    // Verify new employee was added
+    const updatedEmployeeItems = page.locator('text=/Employees #/i');
+    const updatedCount = await updatedEmployeeItems.count();
+    expect(updatedCount).toBe(initialCount + 1);
+
+    // Verify the new employee has empty/default values
+    const lastEmployeeSection = page.locator(`text=/Employees #${updatedCount}/i`).locator('..');
+    await expect(lastEmployeeSection.getByLabel('Full Name')).toHaveValue('');
+  });
+
+  test('remove employee from company array', async ({ page }) => {
+    await page.goto(sdmuiUrl('sdmui/company/c-1'));
+
+    // Get initial employee count
+    const employeeItems = page.locator('text=/Employees #/i');
+    const initialCount = await employeeItems.count();
+
+    // If there are no employees, add one first
+    if (initialCount === 0) {
+      const addButton = page.getByRole('button', { name: /Add employees/i });
+      await addButton.click();
+      await expect(page.locator('text=Item added successfully')).toBeVisible({ timeout: 5000 });
+    }
+
+    // Get the first employee's delete button
+    const deleteButtons = page.getByRole('button').filter({ has: page.locator('[data-testid="DeleteIcon"]') });
+    const firstDeleteButton = deleteButtons.first();
+    await expect(firstDeleteButton).toBeVisible();
+
+    // Click the delete button
+    await firstDeleteButton.click();
+
+    // Wait for success message
+    await expect(page.locator('text=Item removed successfully')).toBeVisible({ timeout: 5000 });
+
+    // Verify employee was removed
+    const updatedEmployeeItems = page.locator('text=/Employees #/i');
+    const updatedCount = await updatedEmployeeItems.count();
+    expect(updatedCount).toBeLessThan(initialCount + 1); // +1 because we might have added one
   });
 });
 

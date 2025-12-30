@@ -178,8 +178,161 @@ export default async function Page(
     }
   }
 
+  async function arrayAddAction(formData: FormData): Promise<SubmitResult> {
+    'use server';
+
+    // Get the field path from the formData or URL
+    const fieldPath = formData.get('_arrayAdd') as string;
+    if (!fieldPath) {
+      return { ok: false, message: 'Field path not specified' };
+    }
+
+    // Clone the entity and add a new item to the array
+    const updatedEntity = JSON.parse(JSON.stringify(entityNonNull));
+
+    // Navigate to the array field
+    const pathParts = fieldPath.replace(/^\$\.?/, '').split('.');
+    let current: any = updatedEntity;
+
+    // Navigate to the parent of the array field
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      if (current[pathParts[i]] === undefined) {
+        current[pathParts[i]] = {};
+      }
+      current = current[pathParts[i]];
+    }
+
+    const arrayFieldName = pathParts[pathParts.length - 1];
+    if (!Array.isArray(current[arrayFieldName])) {
+      current[arrayFieldName] = [];
+    }
+
+    // Navigate through schema to find the array field schema
+    let schemaNode: any = specNonNull.schema;
+    for (const part of pathParts) {
+      if (schemaNode.type === 'object' && schemaNode.properties) {
+        schemaNode = schemaNode.properties[part];
+      } else {
+        schemaNode = null;
+        break;
+      }
+    }
+
+    const itemSchema = schemaNode?.items;
+
+    // Create a default item based on the schema
+    let defaultItem: any = {};
+    if (itemSchema?.type === 'object' && itemSchema.properties) {
+      for (const key in itemSchema.properties) {
+        const propSchema = itemSchema.properties[key];
+        // Set default values based on type
+        if (propSchema.type === 'string') defaultItem[key] = '';
+        else if (propSchema.type === 'number' || propSchema.type === 'integer') defaultItem[key] = 0;
+        else if (propSchema.type === 'boolean') defaultItem[key] = false;
+        else if (propSchema.type === 'object') defaultItem[key] = {};
+        else if (propSchema.type === 'array') defaultItem[key] = [];
+        else defaultItem[key] = null;
+      }
+    } else {
+      // For primitive arrays
+      defaultItem = '';
+    }
+
+    current[arrayFieldName].push(defaultItem);
+
+    // Submit the updated entity
+    const submitUrl = new URL(specNonNull.submit.url, baseOrigin).toString();
+
+    try {
+      const res = await fetch(submitUrl, {
+        method: specNonNull.submit.method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedEntity),
+        cache: 'no-cache',
+      });
+      if (!res.ok) {
+        let msg = `Request failed (${res.status})`;
+        try {
+          const data = await res.json();
+          if (data?.error) msg = String(data.error);
+        } catch {}
+        return { ok: false, message: msg };
+      }
+      return { ok: true, message: 'Item added successfully' };
+    } catch (err: any) {
+      return { ok: false, message: err?.message || 'Network error' };
+    }
+  }
+
+  async function arrayRemoveAction(formData: FormData): Promise<SubmitResult> {
+    'use server';
+
+    // Get the field path and index from the formData
+    const fieldPathAndIndex = formData.get('_arrayRemove') as string;
+    if (!fieldPathAndIndex) {
+      return { ok: false, message: 'Field path not specified' };
+    }
+
+    const [fieldPath, indexStr] = fieldPathAndIndex.split(':');
+    const index = parseInt(indexStr, 10);
+    if (isNaN(index)) {
+      return { ok: false, message: 'Invalid index' };
+    }
+
+    // Clone the entity and remove the item from the array
+    const updatedEntity = JSON.parse(JSON.stringify(entityNonNull));
+
+    // Navigate to the array field
+    const pathParts = fieldPath.replace(/^\$\.?/, '').split('.');
+    let current: any = updatedEntity;
+
+    // Navigate to the parent of the array field
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      if (!current[pathParts[i]]) {
+        return { ok: false, message: 'Invalid field path' };
+      }
+      current = current[pathParts[i]];
+    }
+
+    const arrayFieldName = pathParts[pathParts.length - 1];
+    if (!Array.isArray(current[arrayFieldName])) {
+      return { ok: false, message: 'Field is not an array' };
+    }
+
+    // Remove the item at the specified index
+    current[arrayFieldName].splice(index, 1);
+
+    // Submit the updated entity
+    const submitUrl = new URL(specNonNull.submit.url, baseOrigin).toString();
+
+    try {
+      const res = await fetch(submitUrl, {
+        method: specNonNull.submit.method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedEntity),
+        cache: 'no-cache',
+      });
+      if (!res.ok) {
+        let msg = `Request failed (${res.status})`;
+        try {
+          const data = await res.json();
+          if (data?.error) msg = String(data.error);
+        } catch {}
+        return { ok: false, message: msg };
+      }
+      return { ok: true, message: 'Item removed successfully' };
+    } catch (err: any) {
+      return { ok: false, message: err?.message || 'Network error' };
+    }
+  }
+
   return (
-    <FormShell action={submitAction} deleteAction={specNonNull.delete ? deleteAction : undefined}>
+    <FormShell
+      action={submitAction}
+      deleteAction={specNonNull.delete ? deleteAction : undefined}
+      arrayAddAction={arrayAddAction}
+      arrayRemoveAction={arrayRemoveAction}
+    >
       <FormViewServerRenderer spec={specNonNull} entity={entityNonNull} />
     </FormShell>
   );

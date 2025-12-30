@@ -86,6 +86,10 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
                 size="small"
                 variant="outlined"
                 disabled={disabled}
+                type="submit"
+                formAction={`?/arrayAdd&field=${encodeURIComponent(fieldPath)}`}
+                name="_arrayAdd"
+                value={fieldPath}
               >
                 Add {fieldName}
               </Button>
@@ -99,7 +103,15 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
                   <Typography variant="body2" color="text.secondary">
                     {label} #{index + 1}
                   </Typography>
-                  <IconButton size="small" color="error" disabled={disabled}>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    disabled={disabled}
+                    type="submit"
+                    formAction={`?/arrayRemove&field=${encodeURIComponent(fieldPath)}&index=${index}`}
+                    name="_arrayRemove"
+                    value={`${fieldPath}:${index}`}
+                  >
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Box>

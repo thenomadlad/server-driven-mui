@@ -8,10 +8,14 @@ export type SubmitResult = { ok: boolean; message: string };
 export default function FormShell({
   action,
   deleteAction,
+  arrayAddAction,
+  arrayRemoveAction,
   children,
 }: {
   action: (formData: FormData) => Promise<SubmitResult>;
   deleteAction?: (formData: FormData) => Promise<SubmitResult>;
+  arrayAddAction?: (formData: FormData) => Promise<SubmitResult>;
+  arrayRemoveAction?: (formData: FormData) => Promise<SubmitResult>;
   children: React.ReactNode;
 }) {
   const [snack, setSnack] = React.useState<{ open: boolean; message: string; severity: 'success' | 'error' } | null>(null);
@@ -30,12 +34,23 @@ export default function FormShell({
     const form = e.currentTarget;
     const fd = new FormData(form);
 
-    // Check if this is a delete action
+    // Check which action was triggered
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement;
-    const isDelete = submitter?.formAction?.includes('?/delete');
+    const formAction = submitter?.getAttribute('formaction') || submitter?.formAction || '';
 
     try {
-      const result = isDelete && deleteAction ? await deleteAction(fd) : await action(fd);
+      let result: SubmitResult;
+
+      if (formAction.includes('?/delete') && deleteAction) {
+        result = await deleteAction(fd);
+      } else if (formAction.includes('?/arrayAdd') && arrayAddAction) {
+        result = await arrayAddAction(fd);
+      } else if (formAction.includes('?/arrayRemove') && arrayRemoveAction) {
+        result = await arrayRemoveAction(fd);
+      } else {
+        result = await action(fd);
+      }
+
       if (result.ok) {
         // Persist message across reload
         window.sessionStorage.setItem('form_success', result.message || 'Saved successfully');
