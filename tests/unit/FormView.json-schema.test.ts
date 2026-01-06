@@ -51,7 +51,7 @@ describe('FormView with JSON Schema', () => {
 
       const spec = formView.toSpec();
 
-      expect(spec.submit.allowFields).toEqual(['$.fullName', '$.age']);
+      expect(spec.updateAction.allowFields).toEqual(['$.fullName', '$.age']);
     });
 
     it('should configure submit', () => {
@@ -66,8 +66,8 @@ describe('FormView with JSON Schema', () => {
 
       const spec = formView.toSpec();
 
-      expect(spec.submit.method).toBe('PUT');
-      expect(spec.submit.url).toBe('/api/person/1');
+      expect(spec.updateAction.method).toBe('PUT');
+      expect(spec.updateAction.url).toBe('/api/person/1');
     });
   });
 
@@ -126,7 +126,7 @@ describe('FormView with JSON Schema', () => {
 
       const spec = formView.toSpec();
 
-      expect(spec.submit.allowFields).toEqual(['$.fullName', '$.address.street', '$.address.city']);
+      expect(spec.updateAction.allowFields).toEqual(['$.fullName', '$.address.street', '$.address.city']);
     });
   });
 
@@ -164,8 +164,8 @@ describe('FormView with JSON Schema', () => {
       expect(formView2.entity).toEqual(person2);
 
       // Both should have the same update command
-      expect(spec1.submit.allowFields).toEqual(['$.name']);
-      expect(spec2.submit.allowFields).toEqual(['$.name']);
+      expect(spec1.updateAction.allowFields).toEqual(['$.name']);
+      expect(spec2.updateAction.allowFields).toEqual(['$.name']);
     });
   });
 
