@@ -7,7 +7,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { type JSONSchemaType } from 'ajv';
 import { type FormViewSpec, type FieldPath } from '@/api/FormView';
-import { JSONPath } from 'jsonpath-plus';
+import jp from 'jsonpath';
 
 // ============================================================================
 // Utility Functions
@@ -15,7 +15,8 @@ import { JSONPath } from 'jsonpath-plus';
 
 // Utility to read nested values by JSON-path notation
 function getByPath(json: any, path: FieldPath): any {
-  return JSONPath({path, json});
+  const res = jp.query(json, path);
+  return res ? res[0] : null;
 }
 
 // Get label from JSON Schema (from title or property name)
