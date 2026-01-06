@@ -2,6 +2,7 @@ import { type FormViewSpec } from '@/api/FormView';
 import { FormViewServerRenderer } from '@/theme/simple';
 import FormShell, { type SubmitResult } from '@/components/FormShell';
 import { type JSONSchemaType } from 'ajv';
+import { JSONPath } from 'jsonpath-plus';
 
 // Server-side SDMUI route
 // - Builds the target backend URL from route params
@@ -9,32 +10,49 @@ import { type JSONSchemaType } from 'ajv';
 // - Renders a fully server-side form that submits to a Next.js Server Action
 // - The server action filters fields per allowFields and forwards JSON to the backend submit URL
 
-// Helper to set nested value by JSON-path ($.prop or prop.nested)
-function setByPath(obj: any, path: string, value: any) {
-  // Remove leading $ if present
-  const cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
 
-  const parts = cleanPath.split('.');
-  const last = parts.pop() as string;
-  const target = parts.reduce((acc, k) => {
-    if (acc[k] == null || typeof acc[k] !== 'object') acc[k] = {};
-    return acc[k];
-  }, obj);
-  target[last] = value;
+function getParentOfTargetPath(json: any, path: string) {
+  // Find the parent object
+  const parents = JSONPath({
+    path,
+    json,
+    resultType: 'parent' // gets you parent references
+  });
+
+  return parents.length > 0
+    ? parents[0]
+    : json;  // by default if no parent is found
+}
+
+// Helper to set nested value by JSON-path ($.prop or prop.nested)
+function setByPath(json: any, path: string, value: any) {
+  const fieldName = path.split(".").reverse()[0]
+  const targetObj = getParentOfTargetPath(json, path);
+
+  targetObj[fieldName] = value;
 }
 
 // Extract field type info from JSON Schema for coercion
 function getFieldType(schema: JSONSchemaType<any>, path: string): { type: string; enum?: any[] } | null {
   // Remove leading $ if present
-  const cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
+  let cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
+
+  // Remove array notation stuff if present
+  cleanPath = cleanPath.replace(/\[\d*\]/, "")
 
   const parts = cleanPath.split('.');
   let current: any = schema;
+  if (!current) return null;
 
   for (const part of parts) {
-    if (!current || current.type !== 'object' || !current.properties) return null;
-    current = current.properties[part];
-    if (!current) return null;
+    if (current.type === 'object') {
+      current = current.properties[part];
+    } else if (current.type === 'array' && current.items.type === 'object') {
+      current = current.items.properties[part];
+    } else {
+      // non-object, non-array
+      return null;
+    }
   }
 
   return {
@@ -81,11 +99,19 @@ export default async function Page(
   async function submitAction(formData: FormData): Promise<SubmitResult> {
     'use server';
 
+    const valuePathToFieldPath = (fieldName: string) => fieldName.replace(/\[\d*\]/, "[]");
+
     // Determine which fields are allowed to be sent (using JSON-path format)
-    const allow =
+    const allowFieldSet =
       Array.isArray(specNonNull.updateAction.allowFields) && specNonNull.updateAction.allowFields.length > 0
         ? new Set(specNonNull.updateAction.allowFields)
         : null; // null => allow all posted fields
+
+    const isFieldAllowed = (fieldName: string) => {
+      if (!allowFieldSet) return true;
+
+      return allowFieldSet.has(valuePathToFieldPath(fieldName));
+    }
 
     // Coerce string values based on JSON Schema type
     function coerceValue(fieldType: { type: string; enum?: any[] }, raw: string): any {
@@ -110,12 +136,12 @@ export default async function Page(
       return raw;
     }
 
-    const payload: any = {};
+    const payload: any = JSON.parse(JSON.stringify(entityNonNull));  // hack deep copy
     formData.forEach((value, postedName) => {
       if (typeof value !== 'string') return; // ignore File for now
 
       // Check if this field is allowed
-      if (allow && !allow.has(postedName)) return;
+      if (!isFieldAllowed(postedName)) return;
 
       // Get field type from schema
       const fieldType = getFieldType(specNonNull.schema, postedName);
@@ -264,16 +290,22 @@ export default async function Page(
     }
   }
 
-  async function arrayRemoveAction(formData: FormData): Promise<SubmitResult> {
+  async function arrayRemoveAction(formAction: string): Promise<SubmitResult> {
     'use server';
 
     // Get the field path and index from the formData
-    const fieldPathAndIndex = formData.get('_arrayRemove') as string;
-    if (!fieldPathAndIndex) {
-      return { ok: false, message: 'Field path not specified' };
+    console.log(JSON.stringify(formAction));
+    
+    const fieldPathMatch = formAction.match(/field\=([^&]*)/);
+    const indexStrMatch = formAction.match(/index\=([^&]*)/);
+    if (!fieldPathMatch || !indexStrMatch) {
+      return { ok: false, message: `Missing data fieldPathMatch: ${fieldPathMatch}, indexStrMatch: ${indexStrMatch}` };
     }
 
-    const [fieldPath, indexStr] = fieldPathAndIndex.split(':');
+    // get capture group-ed parts of matches
+    const fieldPath = decodeURIComponent(fieldPathMatch[1]);
+    const indexStr = indexStrMatch[1];
+
     const index = parseInt(indexStr, 10);
     if (isNaN(index)) {
       return { ok: false, message: 'Invalid index' };
@@ -281,26 +313,11 @@ export default async function Page(
 
     // Clone the entity and remove the item from the array
     const updatedEntity = JSON.parse(JSON.stringify(entityNonNull));
-
-    // Navigate to the array field
-    const pathParts = fieldPath.replace(/^\$\.?/, '').split('.');
-    let current: any = updatedEntity;
-
-    // Navigate to the parent of the array field
-    for (let i = 0; i < pathParts.length - 1; i++) {
-      if (!current[pathParts[i]]) {
-        return { ok: false, message: 'Invalid field path' };
-      }
-      current = current[pathParts[i]];
-    }
-
-    const arrayFieldName = pathParts[pathParts.length - 1];
-    if (!Array.isArray(current[arrayFieldName])) {
-      return { ok: false, message: 'Field is not an array' };
-    }
+    const current = getParentOfTargetPath(updatedEntity, fieldPath);
+    const fieldName = fieldPath.split(".").reverse()[0]
 
     // Remove the item at the specified index
-    current[arrayFieldName].splice(index, 1);
+    current[fieldName].splice(index, 1);
 
     // Submit the updated entity
     const submitUrl = new URL(specNonNull.updateAction.url, baseOrigin).toString();

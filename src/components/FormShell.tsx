@@ -15,7 +15,7 @@ export default function FormShell({
   action: (formData: FormData) => Promise<SubmitResult>;
   deleteAction?: (formData: FormData) => Promise<SubmitResult>;
   arrayAddAction?: (formData: FormData) => Promise<SubmitResult>;
-  arrayRemoveAction?: (formData: FormData) => Promise<SubmitResult>;
+  arrayRemoveAction?: (formAction: string) => Promise<SubmitResult>;
   children: React.ReactNode;
 }) {
   const [snack, setSnack] = React.useState<{ open: boolean; message: string; severity: 'success' | 'error' } | null>(null);
@@ -46,7 +46,7 @@ export default function FormShell({
       } else if (formAction.includes('?/arrayAdd') && arrayAddAction) {
         result = await arrayAddAction(fd);
       } else if (formAction.includes('?/arrayRemove') && arrayRemoveAction) {
-        result = await arrayRemoveAction(fd);
+        result = await arrayRemoveAction(formAction);
       } else {
         result = await action(fd);
       }

@@ -92,7 +92,6 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
                                 disabled={disabled}
                                 type="submit"
                                 formAction={`?/arrayRemove&field=${encodeURIComponent(valuePath)}&index=${index}`}
-                                name="_arrayRemove"
                             >
                                 <DeleteIcon fontSize="small" />
                             </IconButton>
