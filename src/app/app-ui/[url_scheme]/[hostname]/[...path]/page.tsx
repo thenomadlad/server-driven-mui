@@ -2,13 +2,26 @@ import { type FormViewSpec } from '@/api/FormView';
 import { FormViewServerRenderer } from '@/theme/simple';
 import FormShell, { type SubmitResult } from '@/components/FormShell';
 import { type JSONSchemaType } from 'ajv';
-import jp from 'jsonpath';
 
 // Server-side SDMUI route
 // - Builds the target backend URL from route params
 // - Fetches a FormViewSpec from the backend
 // - Renders a fully server-side form that submits to a Next.js Server Action
 // - The server action filters fields per allowFields and forwards JSON to the backend submit URL
+
+// Helper to set nested value by JSON-path ($.prop or prop.nested)
+function setByPath(obj: any, path: string, value: any) {
+  // Remove leading $ if present
+  const cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
+
+  const parts = cleanPath.split('.');
+  const last = parts.pop() as string;
+  const target = parts.reduce((acc, k) => {
+    if (acc[k] == null || typeof acc[k] !== 'object') acc[k] = {};
+    return acc[k];
+  }, obj);
+  target[last] = value;
+}
 
 // Extract field type info from JSON Schema for coercion
 function getFieldType(schema: JSONSchemaType<any>, path: string): { type: string; enum?: any[] } | null {
@@ -97,7 +110,7 @@ export default async function Page(
       return raw;
     }
 
-    let payload: any = {};
+    const payload: any = {};
     formData.forEach((value, postedName) => {
       if (typeof value !== 'string') return; // ignore File for now
 
@@ -111,10 +124,7 @@ export default async function Page(
       const coerced = coerceValue(fieldType, value);
       // Skip undefined; allow null for explicit clearing when supported by backend
       if (coerced === undefined) return;
-
-      console.log(`Updating ${postedName} to ${value}`);
-      jp.apply(payload, postedName, () => value);
-      console.log(`Done: ${JSON.stringify(payload)}`);
+      setByPath(payload, postedName, coerced);
     });
 
     const submitUrl = new URL(specNonNull.updateAction.url, baseOrigin).toString();
