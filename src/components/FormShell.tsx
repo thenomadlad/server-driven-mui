@@ -14,7 +14,7 @@ export default function FormShell({
 }: {
   action: (formData: FormData) => Promise<SubmitResult>;
   deleteAction?: (formData: FormData) => Promise<SubmitResult>;
-  arrayAddAction?: (formData: FormData) => Promise<SubmitResult>;
+  arrayAddAction?: (formAction: string) => Promise<SubmitResult>;
   arrayRemoveAction?: (formAction: string) => Promise<SubmitResult>;
   children: React.ReactNode;
 }) {
@@ -44,7 +44,7 @@ export default function FormShell({
       if (formAction.includes('?/delete') && deleteAction) {
         result = await deleteAction(fd);
       } else if (formAction.includes('?/arrayAdd') && arrayAddAction) {
-        result = await arrayAddAction(fd);
+        result = await arrayAddAction(formAction);
       } else if (formAction.includes('?/arrayRemove') && arrayRemoveAction) {
         result = await arrayRemoveAction(formAction);
       } else {

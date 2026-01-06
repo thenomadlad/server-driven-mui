@@ -24,6 +24,32 @@ function getParentOfTargetPath(json: any, path: string) {
     : json;  // by default if no parent is found
 }
 
+const createDefaultUsingSchema = (schema: JSONSchemaType<any>): any => {
+  // Create a default item based on the schema
+  let defaultItem: any = {};
+  if (schema?.type === 'object' && schema.properties) {
+    for (const key in schema.properties) {
+      const propSchema = schema.properties[key];
+
+      // Set default values based on type
+      if (propSchema.type === 'string') defaultItem[key] = '';
+        else if (propSchema.type === 'number' || propSchema.type === 'integer')
+          defaultItem[key] = propSchema.minimum
+            ? propSchema.minimum
+            : 0;
+          else if (propSchema.type === 'boolean') defaultItem[key] = false;
+            else if (propSchema.type === 'object') defaultItem[key] = createDefaultUsingSchema(propSchema);
+              else if (propSchema.type === 'array') defaultItem[key] = [];
+                else defaultItem[key] = null;
+    }
+  } else {
+    // For primitive arrays
+    defaultItem = '';
+  }
+
+  return defaultItem;
+}
+
 // Helper to set nested value by JSON-path ($.prop or prop.nested)
 function setByPath(json: any, path: string, value: any) {
   const fieldName = path.split(".").reverse()[0]
@@ -33,12 +59,12 @@ function setByPath(json: any, path: string, value: any) {
 }
 
 // Extract field type info from JSON Schema for coercion
-function getFieldType(schema: JSONSchemaType<any>, path: string): { type: string; enum?: any[] } | null {
+function getFieldType(schema: JSONSchemaType<any>, path: string): { type: string; schema: JSONSchemaType<any> } | null {
   // Remove leading $ if present
   let cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
 
   // Remove array notation stuff if present
-  cleanPath = cleanPath.replace(/\[\d*\]/, "")
+  cleanPath = cleanPath.replace(/\[\d*\]/, '');
 
   const parts = cleanPath.split('.');
   let current: any = schema;
@@ -57,7 +83,7 @@ function getFieldType(schema: JSONSchemaType<any>, path: string): { type: string
 
   return {
     type: current.type || 'string',
-    enum: current.enum,
+    schema: current
   };
 }
 
@@ -114,7 +140,7 @@ export default async function Page(
     }
 
     // Coerce string values based on JSON Schema type
-    function coerceValue(fieldType: { type: string; enum?: any[] }, raw: string): any {
+    function coerceValue(fieldType: { type: string; schema: JSONSchemaType<any> }, raw: string): any {
       if (fieldType.type === 'number' || fieldType.type === 'integer') {
         // Interpret empty string as null to avoid NaN
         if (raw.trim() === '') return null;
@@ -124,10 +150,10 @@ export default async function Page(
       if (fieldType.type === 'boolean') {
         return raw === 'true';
       }
-      if (fieldType.enum && Array.isArray(fieldType.enum)) {
+      if (fieldType.schema.enum && Array.isArray(fieldType.schema.enum)) {
         // If enum contains numeric values, coerce accordingly
         const numValue = Number(raw);
-        if (!isNaN(numValue) && fieldType.enum.includes(numValue)) {
+        if (!isNaN(numValue) && fieldType.schema.enum.includes(numValue)) {
           return numValue;
         }
         return raw;
@@ -204,65 +230,31 @@ export default async function Page(
     }
   }
 
-  async function arrayAddAction(formData: FormData): Promise<SubmitResult> {
+  async function arrayAddAction(formAction: string): Promise<SubmitResult> {
     'use server';
 
     // Get the field path from the formData or URL
-    const fieldPath = formData.get('_arrayAdd') as string;
-    if (!fieldPath) {
+    const fieldPathMatch = formAction.match(/field\=([^&]*)/);
+    if (!fieldPathMatch) {
       return { ok: false, message: 'Field path not specified' };
     }
+
+    const fieldPath = decodeURIComponent(fieldPathMatch[1]);  // parse the match group
 
     // Clone the entity and add a new item to the array
     const updatedEntity = JSON.parse(JSON.stringify(entityNonNull));
 
     // Navigate to the array field
-    const pathParts = fieldPath.replace(/^\$\.?/, '').split('.');
-    let current: any = updatedEntity;
+    const current = getParentOfTargetPath(updatedEntity, fieldPath)
 
-    // Navigate to the parent of the array field
-    for (let i = 0; i < pathParts.length - 1; i++) {
-      if (current[pathParts[i]] === undefined) {
-        current[pathParts[i]] = {};
-      }
-      current = current[pathParts[i]];
-    }
-
-    const arrayFieldName = pathParts[pathParts.length - 1];
+    const arrayFieldName = fieldPath.split('.').reverse()[0];
     if (!Array.isArray(current[arrayFieldName])) {
       current[arrayFieldName] = [];
     }
 
-    // Navigate through schema to find the array field schema
-    let schemaNode: any = specNonNull.schema;
-    for (const part of pathParts) {
-      if (schemaNode.type === 'object' && schemaNode.properties) {
-        schemaNode = schemaNode.properties[part];
-      } else {
-        schemaNode = null;
-        break;
-      }
-    }
-
-    const itemSchema = schemaNode?.items;
-
-    // Create a default item based on the schema
-    let defaultItem: any = {};
-    if (itemSchema?.type === 'object' && itemSchema.properties) {
-      for (const key in itemSchema.properties) {
-        const propSchema = itemSchema.properties[key];
-        // Set default values based on type
-        if (propSchema.type === 'string') defaultItem[key] = '';
-        else if (propSchema.type === 'number' || propSchema.type === 'integer') defaultItem[key] = 0;
-        else if (propSchema.type === 'boolean') defaultItem[key] = false;
-        else if (propSchema.type === 'object') defaultItem[key] = {};
-        else if (propSchema.type === 'array') defaultItem[key] = [];
-        else defaultItem[key] = null;
-      }
-    } else {
-      // For primitive arrays
-      defaultItem = '';
-    }
+    // Navigate through schema to find the array field schema, and create a default entry
+    const itemSchema = getFieldType(specNonNull.schema, fieldPath)?.schema.items;
+    const defaultItem: any = createDefaultUsingSchema(itemSchema);
 
     current[arrayFieldName].push(defaultItem);
 
@@ -294,8 +286,6 @@ export default async function Page(
     'use server';
 
     // Get the field path and index from the formData
-    console.log(JSON.stringify(formAction));
-    
     const fieldPathMatch = formAction.match(/field\=([^&]*)/);
     const indexStrMatch = formAction.match(/index\=([^&]*)/);
     if (!fieldPathMatch || !indexStrMatch) {

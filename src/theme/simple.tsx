@@ -15,7 +15,7 @@ import { JSONPath } from 'jsonpath-plus';
 
 // Utility to read nested values by JSON-path notation
 function getByPath(json: any, path: FieldPath): any {
-  return JSONPath({path, json});
+  return JSONPath({path, json, flatten: true});
 }
 
 // Get label from JSON Schema (from title or property name)
@@ -55,6 +55,7 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
       if (fieldSchema.type === 'array') {
         const arrayValue = getByPath(entity, valuePath) || [];
         const itemSchema = fieldSchema.items;
+        console.log(`${JSON.stringify(entity)}, ${valuePath}, ${JSON.stringify(arrayValue)}`)
 
         fields.push(
           <Box key={valuePath} sx={{ mt: 2, p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
@@ -67,8 +68,6 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
                 disabled={disabled}
                 type="submit"
                 formAction={`?/arrayAdd&field=${encodeURIComponent(valuePath)}`}
-                name="_arrayAdd"
-                value={valuePath}
               >
                 Add {fieldName}
               </Button>

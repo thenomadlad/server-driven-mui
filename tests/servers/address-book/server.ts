@@ -311,7 +311,7 @@ app.delete('/api/company/:id', (req, res) => {
   const curr = companies[req.params.id];
   if (!curr) return res.status(404).json({ error: 'Not found' });
   delete companies[req.params.id];
-  res.status(200).json({ message: 'Deleted successfully' });
+  res.status(204).send();
 });
 
 // --- SDMUI endpoints ---
