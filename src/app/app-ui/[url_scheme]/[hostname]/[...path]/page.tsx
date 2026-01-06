@@ -83,8 +83,8 @@ export default async function Page(
 
     // Determine which fields are allowed to be sent (using JSON-path format)
     const allow =
-      Array.isArray(specNonNull.submit.allowFields) && specNonNull.submit.allowFields.length > 0
-        ? new Set(specNonNull.submit.allowFields)
+      Array.isArray(specNonNull.updateAction.allowFields) && specNonNull.updateAction.allowFields.length > 0
+        ? new Set(specNonNull.updateAction.allowFields)
         : null; // null => allow all posted fields
 
     // Coerce string values based on JSON Schema type
@@ -127,11 +127,11 @@ export default async function Page(
       setByPath(payload, postedName, coerced);
     });
 
-    const submitUrl = new URL(specNonNull.submit.url, baseOrigin).toString();
+    const submitUrl = new URL(specNonNull.updateAction.url, baseOrigin).toString();
 
     try {
       const res = await fetch(submitUrl, {
-        method: specNonNull.submit.method,
+        method: specNonNull.updateAction.method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         cache: 'no-cache',
@@ -153,15 +153,15 @@ export default async function Page(
   async function deleteAction(formData: FormData): Promise<SubmitResult> {
     'use server';
 
-    if (!specNonNull.delete) {
+    if (!specNonNull.deleteAction) {
       return { ok: false, message: 'Delete not configured' };
     }
 
-    const deleteUrl = new URL(specNonNull.delete.url, baseOrigin).toString();
+    const deleteUrl = new URL(specNonNull.deleteAction.url, baseOrigin).toString();
 
     try {
       const res = await fetch(deleteUrl, {
-        method: specNonNull.delete.method,
+        method: specNonNull.deleteAction.method,
         cache: 'no-cache',
       });
       if (!res.ok) {
@@ -241,11 +241,11 @@ export default async function Page(
     current[arrayFieldName].push(defaultItem);
 
     // Submit the updated entity
-    const submitUrl = new URL(specNonNull.submit.url, baseOrigin).toString();
+    const submitUrl = new URL(specNonNull.updateAction.url, baseOrigin).toString();
 
     try {
       const res = await fetch(submitUrl, {
-        method: specNonNull.submit.method,
+        method: specNonNull.updateAction.method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedEntity),
         cache: 'no-cache',
@@ -303,11 +303,11 @@ export default async function Page(
     current[arrayFieldName].splice(index, 1);
 
     // Submit the updated entity
-    const submitUrl = new URL(specNonNull.submit.url, baseOrigin).toString();
+    const submitUrl = new URL(specNonNull.updateAction.url, baseOrigin).toString();
 
     try {
       const res = await fetch(submitUrl, {
-        method: specNonNull.submit.method,
+        method: specNonNull.updateAction.method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedEntity),
         cache: 'no-cache',
@@ -329,7 +329,7 @@ export default async function Page(
   return (
     <FormShell
       action={submitAction}
-      deleteAction={specNonNull.delete ? deleteAction : undefined}
+      deleteAction={specNonNull.deleteAction ? deleteAction : undefined}
       arrayAddAction={arrayAddAction}
       arrayRemoveAction={arrayRemoveAction}
     >

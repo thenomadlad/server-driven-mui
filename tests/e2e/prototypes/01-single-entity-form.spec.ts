@@ -25,9 +25,24 @@ async function waitForPort(port: number, host: string, timeoutMs: number) {
   });
 }
 
+async function resetServerData() {
+  try {
+    const response = await fetch('http://localhost:8181/api/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      throw new Error(`Reset failed: ${response.status}`);
+    }
+  } catch (error) {
+    console.error('Failed to reset server data:', error);
+    throw error;
+  }
+}
+
 let addressBookProc: ChildProcess | undefined;
 
-test.beforeEach(async () => {
+test.beforeAll(async () => {
   const cmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
   addressBookProc = spawn(cmd, ['run', 'server:address-book'], {
     stdio: 'inherit',
@@ -37,7 +52,7 @@ test.beforeEach(async () => {
   await waitForPort(8181, '127.0.0.1', 60_000);
 });
 
-test.afterEach(async () => {
+test.afterAll(async () => {
   if (addressBookProc && addressBookProc.pid) {
     try {
       if (process.platform === 'win32') addressBookProc.kill();
@@ -46,6 +61,11 @@ test.afterEach(async () => {
       await new Promise(resolve => setTimeout(resolve, 2000));
     } catch {}
   }
+});
+
+test.beforeEach(async () => {
+  // Reset server data to initial state before each test
+  await resetServerData();
 });
 
 async function submit(page: Page) {
@@ -113,7 +133,7 @@ test.describe('SDMUI E2E: person', () => {
   test('edit top-level Full Name and persist', async ({ page }) => {
     await page.goto(sdmuiUrl('sdmui/person/p-1'));
     const label = 'Full Name';
-    const base = 'Grace Hopper';
+    const base = 'Ada Lovelace';
 
     const input = page.getByLabel(label, { exact: true });
     await expect(input).toBeVisible();

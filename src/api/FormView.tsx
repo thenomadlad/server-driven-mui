@@ -13,14 +13,14 @@ import { type JSONSchemaType } from 'ajv';
 // JSON-path format: $.property, $.array[], $.nested.property
 export type FieldPath = string;
 
-export interface SubmitDef {
+export interface SubmitAction {
   method: 'POST' | 'PUT' | 'PATCH';
   url: string;
   // JSON-path allowed fields for submission and editability
   allowFields: FieldPath[];
 }
 
-export interface DeleteDef {
+export interface DeleteAction {
   method: 'DELETE';
   url: string;
 }
@@ -29,8 +29,8 @@ export interface FormViewSpec {
   type: 'form';
   title: string;
   schema: JSONSchemaType<any>;
-  submit: SubmitDef;
-  delete?: DeleteDef;
+  updateAction: SubmitAction;
+  deleteAction?: DeleteAction;
 }
 
 // ============================================================================
@@ -127,8 +127,8 @@ export class FormView<T> {
 export class FormViewBuilder {
   private schema: JSONSchemaType<any>;
   private titleText: string;
-  private submitDef: SubmitDef = { method: 'POST', url: '#', allowFields: [] };
-  private deleteDef?: DeleteDef;
+  private updateAction: SubmitAction = { method: 'POST', url: '#', allowFields: [] };
+  private deleteAction?: DeleteAction;
 
   constructor(schema: JSONSchemaType<any>, title: string) {
     this.schema = schema;
@@ -141,23 +141,23 @@ export class FormViewBuilder {
    */
   forUpdateCommand(updateSchema: JSONSchemaType<any>): this {
     const allowFields = extractFieldPaths(updateSchema);
-    this.submitDef = { ...this.submitDef, allowFields };
+    this.updateAction = { ...this.updateAction, allowFields };
     return this;
   }
 
   /**
    * Configure form submission
    */
-  submit(def: Partial<SubmitDef>): this {
-    this.submitDef = { ...this.submitDef, ...def };
+  submit(def: Partial<SubmitAction>): this {
+    this.updateAction = { ...this.updateAction, ...def };
     return this;
   }
 
   /**
    * Configure delete action
    */
-  delete(def: DeleteDef): this {
-    this.deleteDef = def;
+  delete(def: DeleteAction): this {
+    this.deleteAction = def;
     return this;
   }
 
@@ -170,8 +170,8 @@ export class FormViewBuilder {
       type: 'form',
       title: this.titleText,
       schema: this.schema,
-      submit: this.submitDef,
-      ...(this.deleteDef && { delete: this.deleteDef }),
+      updateAction: this.updateAction,
+      ...(this.deleteAction && { deleteAction: this.deleteAction }),
     };
     return FormView._internal_create<T>(spec, entity);
   }

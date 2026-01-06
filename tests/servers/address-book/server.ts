@@ -62,37 +62,60 @@ type Company = z.infer<typeof CompanySchema>;
 type UpdatePerson = z.infer<typeof UpdatePersonSchema>;
 type UpdateCompany = z.infer<typeof UpdateCompanySchema>;
 
-let addresses: Record<string, Address> = {
-  'addr-1': { id: 'addr-1', street1: '1 Main St', street2: null, state: 'CA', zipcode: 94105 },
-};
+// --- Initial data state ---
+// Store initial state for reset functionality
+function getInitialAddresses(): Record<string, Address> {
+  return {
+    'addr-1': { id: 'addr-1', street1: '1 Main St', street2: null, state: 'CA', zipcode: 94105 },
+  };
+}
 
-let persons: Record<string, Person> = {
-  'p-1': {
-    id: 'p-1',
-    fullName: 'Ada Lovelace',
-    phone: '+1-555-0101',
-    email: 'ada@example.com',
-    address: { ...((({}) as any)), ...({ id: addresses['addr-1'].id, street1: addresses['addr-1'].street1, street2: addresses['addr-1'].street2, state: addresses['addr-1'].state, zipcode: addresses['addr-1'].zipcode }) },
-  },
-};
+function getInitialPersons(): Record<string, Person> {
+  const addresses = getInitialAddresses();
+  return {
+    'p-1': {
+      id: 'p-1',
+      fullName: 'Ada Lovelace',
+      phone: '+1-555-0101',
+      email: 'ada@example.com',
+      address: { ...addresses['addr-1'] },
+    },
+  };
+}
 
-let companies: Record<string, Company> = {
-  'c-1': {
-    id: 'c-1',
-    name: 'Analytical Engines Inc.',
-    address: addresses['addr-1'],
-    employees: [
-      {
-        id: persons['p-1'].id,
-        fullName: persons['p-1'].fullName,
-        phone: persons['p-1'].phone,
-        email: persons['p-1'].email,
-        address: addresses['addr-1'],
-      },
-    ],
-    roles: { CTO: 'p-1' },
-  },
-};
+function getInitialCompanies(): Record<string, Company> {
+  const addresses = getInitialAddresses();
+  const persons = getInitialPersons();
+  return {
+    'c-1': {
+      id: 'c-1',
+      name: 'Analytical Engines Inc.',
+      address: addresses['addr-1'],
+      employees: [
+        {
+          id: persons['p-1'].id,
+          fullName: persons['p-1'].fullName,
+          phone: persons['p-1'].phone,
+          email: persons['p-1'].email,
+          address: addresses['addr-1'],
+        },
+      ],
+      roles: { CTO: 'p-1' },
+    },
+  };
+}
+
+// Current in-memory data
+let addresses: Record<string, Address> = getInitialAddresses();
+let persons: Record<string, Person> = getInitialPersons();
+let companies: Record<string, Company> = getInitialCompanies();
+
+// Reset function to restore initial state
+function resetData() {
+  addresses = getInitialAddresses();
+  persons = getInitialPersons();
+  companies = getInitialCompanies();
+}
 
 // --- Helpers ---
 const STATES = ['CA', 'MA', 'NY'];
@@ -284,6 +307,13 @@ app.post('/api/company/:id', (req, res) => {
   res.json(updated);
 });
 
+app.delete('/api/company/:id', (req, res) => {
+  const curr = companies[req.params.id];
+  if (!curr) return res.status(404).json({ error: 'Not found' });
+  delete companies[req.params.id];
+  res.status(200).json({ message: 'Deleted successfully' });
+});
+
 // --- SDMUI endpoints ---
 // Using JSON Schema for FormView API
 
@@ -336,6 +366,12 @@ app.get('/sdmui/company/:id', (req, res) => {
   const c = companies[req.params.id];
   if (!c) return res.status(404).json({ error: 'Not found' });
   res.json(companyFormView(c));
+});
+
+// Reset endpoint for testing - restores all data to initial state
+app.post('/api/reset', (_req, res) => {
+  resetData();
+  res.json({ success: true, message: 'Data reset to initial state' });
 });
 
 app.get('/', (_req, res) => {

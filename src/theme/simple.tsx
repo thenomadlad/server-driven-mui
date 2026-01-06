@@ -7,36 +7,15 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { type JSONSchemaType } from 'ajv';
 import { type FormViewSpec, type FieldPath } from '@/api/FormView';
+import { JSONPath } from 'jsonpath-plus';
 
 // ============================================================================
 // Utility Functions
 // ============================================================================
 
 // Utility to read nested values by JSON-path notation
-function getByPath(obj: any, path: FieldPath): any {
-  // Remove leading $ if present
-  const cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
-
-  if (!cleanPath) return obj;
-
-  const parts = cleanPath.split('.');
-  let current = obj;
-
-  for (const part of parts) {
-    if (current == null) return undefined;
-
-    // Handle array notation []
-    if (part.endsWith('[]')) {
-      const key = part.slice(0, -2);
-      current = key ? current[key] : current;
-      // Return the array itself for array fields
-      return current;
-    }
-
-    current = current[part];
-  }
-
-  return current;
+function getByPath(json: any, path: FieldPath): any {
+  return JSONPath({path, json});
 }
 
 // Get label from JSON Schema (from title or property name)
@@ -55,13 +34,12 @@ function getLabel(schema: JSONSchemaType<any> | any, fieldName: string): string 
 // ============================================================================
 
 export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec; entity: T }) {
-  const { title, schema, submit } = spec;
-  const deleteSpec = spec.delete;
+  const { title, schema, updateAction, deleteAction } = spec;
   const isEditable = (path: FieldPath) =>
-    submit.allowFields.length === 0 || submit.allowFields.includes(path);
+    updateAction.allowFields.length === 0 || updateAction.allowFields.includes(path);
 
   // Render fields from JSON Schema properties
-  const renderFields = (schemaObj: JSONSchemaType<any> | any, parentPath = '$'): React.JSX.Element[] => {
+  const renderFields = (schemaObj: JSONSchemaType<any> | any, parentPath = '$', valueParentPath = "$"): React.JSX.Element[] => {
     if (!schemaObj.properties) return [];
 
     const fields: React.JSX.Element[] = [];
@@ -69,16 +47,17 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
     for (const fieldName in schemaObj.properties) {
       const fieldSchema = schemaObj.properties[fieldName];
       const fieldPath = `${parentPath}.${fieldName}`;
+      const valuePath = `${valueParentPath}.${fieldName}`;
       const label = getLabel(fieldSchema, fieldName);
       const disabled = !isEditable(fieldPath);
 
       // Handle arrays with add/remove buttons
       if (fieldSchema.type === 'array') {
-        const arrayValue = getByPath(entity, fieldPath) || [];
+        const arrayValue = getByPath(entity, valuePath) || [];
         const itemSchema = fieldSchema.items;
 
         fields.push(
-          <Box key={fieldPath} sx={{ mt: 2, p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
+          <Box key={valuePath} sx={{ mt: 2, p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="subtitle1">{label}</Typography>
               <Button
@@ -87,39 +66,43 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
                 variant="outlined"
                 disabled={disabled}
                 type="submit"
-                formAction={`?/arrayAdd&field=${encodeURIComponent(fieldPath)}`}
+                formAction={`?/arrayAdd&field=${encodeURIComponent(valuePath)}`}
                 name="_arrayAdd"
-                value={fieldPath}
+                value={valuePath}
               >
                 Add {fieldName}
               </Button>
             </Box>
-            {Array.isArray(arrayValue) && arrayValue.map((item: any, index: number) => (
-              <Box
-                key={`${fieldPath}[${index}]`}
-                sx={{ mb: 2, p: 2, border: '1px solid #eee', borderRadius: 1, position: 'relative' }}
-              >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {label} #{index + 1}
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    disabled={disabled}
-                    type="submit"
-                    formAction={`?/arrayRemove&field=${encodeURIComponent(fieldPath)}&index=${index}`}
-                    name="_arrayRemove"
-                    value={`${fieldPath}:${index}`}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-                {itemSchema.type === 'object'
-                  ? renderFields(itemSchema, `${fieldPath}[${index}]`)
-                  : renderPrimitiveField(itemSchema, `${fieldPath}[${index}]`, item, disabled)}
-              </Box>
-            ))}
+            {Array.isArray(arrayValue) && arrayValue.map((item: any, index: number) => {
+              const newParentPath = `${fieldPath}[]`;
+              const newValueParentPath = `${valuePath}[${index}]`;
+
+                return (
+                    <Box
+                        key={`${valuePath}[${index}]`}
+                        sx={{ mb: 2, p: 2, border: '1px solid #eee', borderRadius: 1, position: 'relative' }}
+                    >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Typography variant="body2" color="text.secondary">
+                                {label} #{index + 1}
+                            </Typography>
+                            <IconButton
+                                size="small"
+                                color="error"
+                                disabled={disabled}
+                                type="submit"
+                                formAction={`?/arrayRemove&field=${encodeURIComponent(valuePath)}&index=${index}`}
+                                name="_arrayRemove"
+                            >
+                                <DeleteIcon fontSize="small" />
+                            </IconButton>
+                        </Box>
+                        {itemSchema.type === 'object'
+                            ? renderFields(itemSchema, newParentPath, newValueParentPath)
+                            : renderPrimitiveField(itemSchema, newParentPath, newValueParentPath, item, disabled)}
+                    </Box>
+                );
+            })}
             {(!arrayValue || arrayValue.length === 0) && (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 No items yet. Click "Add {fieldName}" to create one.
@@ -133,19 +116,19 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
       // Handle nested objects as groups
       if (fieldSchema.type === 'object') {
         fields.push(
-          <Box key={fieldPath} sx={{ pl: 2, borderLeft: '2px solid #eee', mt: 1 }}>
+          <Box key={valuePath} sx={{ pl: 2, borderLeft: '2px solid #eee', mt: 1 }}>
             <Typography variant="subtitle1" sx={{ mb: 1 }}>
               {label}
             </Typography>
-            {renderFields(fieldSchema, fieldPath)}
+            {renderFields(fieldSchema, fieldPath, valuePath)}
           </Box>
         );
         continue;
       }
 
       // Handle primitive fields
-      const value = getByPath(entity, fieldPath) ?? '';
-      fields.push(renderPrimitiveField(fieldSchema, fieldPath, value, disabled));
+      const value = getByPath(entity, valuePath) ?? '';
+      fields.push(renderPrimitiveField(fieldSchema, fieldPath, valuePath, value, disabled));
     }
 
     return fields;
@@ -155,14 +138,15 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
   const renderPrimitiveField = (
     fieldSchema: any,
     fieldPath: string,
+    valuePath: string,
     value: any,
     disabled: boolean
   ): React.JSX.Element => {
     const label = getLabel(fieldSchema, fieldPath.split('.').pop() || '');
 
     const commonProps = {
-      key: fieldPath,
-      name: fieldPath,
+      key: valuePath,
+      name: valuePath,
       label,
       defaultValue: value ?? '',
       fullWidth: true,
@@ -204,7 +188,7 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
         <Typography variant="h5">
           {title}
         </Typography>
-        {deleteSpec && (
+        {deleteAction && (
           <Button
             type="submit"
             variant="outlined"
