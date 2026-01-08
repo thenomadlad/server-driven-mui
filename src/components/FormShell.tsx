@@ -1,24 +1,26 @@
 "use client";
 
 import React from 'react';
-import { Snackbar, Alert, Box, Button } from '@mui/material';
+import { Box, Button } from '@mui/material';
+import { SnackbarProvider, useSnackbar } from '../context/SnackbarContext';
+import Snackbar from "../components/Snackbar";
 
 export type SubmitResult = { ok: boolean; message: string };
 
-export default function FormShell({
-  action,
+function FormShellInner({
+  submitAction,
   deleteAction,
   arrayAddAction,
   arrayRemoveAction,
   children,
 }: {
-  action: (formData: FormData) => Promise<SubmitResult>;
+  submitAction?: (formData: FormData) => Promise<SubmitResult>;
   deleteAction?: (formData: FormData) => Promise<SubmitResult>;
   arrayAddAction?: (formAction: string) => Promise<SubmitResult>;
   arrayRemoveAction?: (formAction: string) => Promise<SubmitResult>;
   children: React.ReactNode;
 }) {
-  const [snack, setSnack] = React.useState<{ open: boolean; message: string; severity: 'success' | 'error' } | null>(null);
+  const { setSnack } = useSnackbar();
 
   // On mount, check if a success message exists from a previous redirect/reload
   React.useEffect(() => {
@@ -27,7 +29,7 @@ export default function FormShell({
       setSnack({ open: true, message: msg, severity: 'success' });
       window.sessionStorage.removeItem('form_success');
     }
-  }, []);
+  }, [setSnack]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -48,15 +50,25 @@ export default function FormShell({
       } else if (formAction.includes('?/arrayRemove') && arrayRemoveAction) {
         result = await arrayRemoveAction(formAction);
       } else {
-        result = await action(fd);
+        result = submitAction
+          ? await submitAction(fd)
+          : {ok: true, message: "Submit action not triggered (none provided)"};
       }
 
       if (result.ok) {
+        const message = result.message || 'Saved successfully';
+
+        // Show immediately
+        setSnack({ open: true, message, severity: 'success' });
+
         // Persist message across reload
-        window.sessionStorage.setItem('form_success', result.message || 'Saved successfully');
+        window.sessionStorage.setItem('form_success', message);
+
         window.location.reload();
+
         return;
       }
+
       setSnack({ open: true, message: result.message || 'Failed to submit', severity: 'error' });
     } catch (err: any) {
       setSnack({ open: true, message: err?.message || 'Unexpected error', severity: 'error' });
@@ -71,17 +83,23 @@ export default function FormShell({
           Submit
         </Button>
       </Box>
-      <Snackbar
-        open={Boolean(snack?.open)}
-        autoHideDuration={4000}
-        onClose={() => setSnack((s) => (s ? { ...s, open: false } : s))}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={() => setSnack((s) => (s ? { ...s, open: false } : s))} severity={snack?.severity || 'success'} sx={{ width: '100%' }}>
-          {snack?.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
+}
+
+
+export default function FormShell(params: {
+  submitAction?: (formData: FormData) => Promise<SubmitResult>;
+  deleteAction?: (formData: FormData) => Promise<SubmitResult>;
+  arrayAddAction?: (formAction: string) => Promise<SubmitResult>;
+  arrayRemoveAction?: (formAction: string) => Promise<SubmitResult>;
+  children: React.ReactNode;
+}) {
+  return (
+    <SnackbarProvider>
+      <Snackbar />
+      <FormShellInner  {...params} />
+    </SnackbarProvider>
+  )
 }
 

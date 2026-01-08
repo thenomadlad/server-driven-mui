@@ -21,7 +21,7 @@ describe('FormView with JSON Schema', () => {
     };
 
     it('should store JSON Schema in spec', () => {
-      const jsonSchema = zodToJsonSchema(PersonSchema);
+      const jsonSchema = zodToJsonSchema(PersonSchema) as any;
       const formView = FormView.fromSchema(jsonSchema, 'Person Form').buildForEntity(samplePerson);
 
       const spec = formView.toSpec();
@@ -42,8 +42,8 @@ describe('FormView with JSON Schema', () => {
         age: true,
       });
 
-      const jsonSchema = zodToJsonSchema(PersonSchema);
-      const updateSchema = zodToJsonSchema(UpdatePersonSchema);
+      const jsonSchema = zodToJsonSchema(PersonSchema) as any;
+      const updateSchema = zodToJsonSchema(UpdatePersonSchema) as any;
 
       const formView = FormView.fromSchema(jsonSchema, 'Person Form')
         .forUpdateCommand(updateSchema)
@@ -55,7 +55,7 @@ describe('FormView with JSON Schema', () => {
     });
 
     it('should configure submit', () => {
-      const jsonSchema = zodToJsonSchema(PersonSchema);
+      const jsonSchema = zodToJsonSchema(PersonSchema) as any;
 
       const formView = FormView.fromSchema(jsonSchema, 'Person Form')
         .submit({
@@ -99,7 +99,7 @@ describe('FormView with JSON Schema', () => {
     };
 
     it('should handle nested objects', () => {
-      const jsonSchema = zodToJsonSchema(PersonWithAddressSchema);
+      const jsonSchema = zodToJsonSchema(PersonWithAddressSchema) as any;
       const formView = FormView.fromSchema(jsonSchema, 'Person Form').buildForEntity(samplePersonWithAddress);
 
       const spec = formView.toSpec();
@@ -117,8 +117,8 @@ describe('FormView with JSON Schema', () => {
         address: AddressSchema.pick({ street: true, city: true }),
       });
 
-      const jsonSchema = zodToJsonSchema(PersonWithAddressSchema);
-      const updateSchema = zodToJsonSchema(UpdateSchema);
+      	  const jsonSchema = zodToJsonSchema(PersonWithAddressSchema) as any;
+      const updateSchema = zodToJsonSchema(UpdateSchema) as any;
 
       const formView = FormView.fromSchema(jsonSchema, 'Person Form')
         .forUpdateCommand(updateSchema)
@@ -138,8 +138,8 @@ describe('FormView with JSON Schema', () => {
         email: z.string().email().describe('Email'),
       });
 
-      const jsonSchema = zodToJsonSchema(PersonSchema);
-      const updateSchema = zodToJsonSchema(PersonSchema.pick({ name: true }));
+      const jsonSchema = zodToJsonSchema(PersonSchema) as any;
+      const updateSchema = zodToJsonSchema(PersonSchema.pick({ name: true })) as any;
 
       // Create a reusable builder
       const builder = FormView.fromSchema(jsonSchema, 'Person Form').forUpdateCommand(updateSchema);
@@ -176,7 +176,7 @@ describe('FormView with JSON Schema', () => {
         age: z.number().describe('Age'),
       });
 
-      const jsonSchema = zodToJsonSchema(SimpleSchema);
+      const jsonSchema = zodToJsonSchema(SimpleSchema) as any;
 
       const formView = FormView.fromSchema(jsonSchema, 'Test Form').buildForEntity({ name: 'John', age: 30 });
 

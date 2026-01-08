@@ -24,30 +24,125 @@ function getParentOfTargetPath(json: any, path: string) {
     : json;  // by default if no parent is found
 }
 
-const createDefaultUsingSchema = (schema: JSONSchemaType<any>): any => {
-  // Create a default item based on the schema
-  let defaultItem: any = {};
-  if (schema?.type === 'object' && schema.properties) {
-    for (const key in schema.properties) {
-      const propSchema = schema.properties[key];
+type AnyJsonSchema = any;
 
-      // Set default values based on type
-      if (propSchema.type === 'string') defaultItem[key] = '';
-        else if (propSchema.type === 'number' || propSchema.type === 'integer')
-          defaultItem[key] = propSchema.minimum
-            ? propSchema.minimum
-            : 0;
-          else if (propSchema.type === 'boolean') defaultItem[key] = false;
-            else if (propSchema.type === 'object') defaultItem[key] = createDefaultUsingSchema(propSchema);
-              else if (propSchema.type === 'array') defaultItem[key] = [];
-                else defaultItem[key] = null;
-    }
-  } else {
-    // For primitive arrays
-    defaultItem = '';
+function resolveJsonPointer(root: AnyJsonSchema, pointer: string): AnyJsonSchema | null {
+  // Supports refs like "#/definitions/Address" or "#/$defs/Address".
+  if (!pointer.startsWith('#/')) return null;
+
+  const parts = pointer
+    .slice(2)
+    .split('/')
+    .map((p) => decodeURIComponent(p.replace(/~1/g, '/').replace(/~0/g, '~')));
+
+  let current: any = root;
+  for (const part of parts) {
+    if (current == null) return null;
+    current = current[part];
+  }
+  return current ?? null;
+}
+
+function normalizeSchema(schema: AnyJsonSchema, root: AnyJsonSchema): AnyJsonSchema {
+  let current: any = schema;
+
+  // Dereference $ref chains.
+  while (current && typeof current === 'object' && typeof current.$ref === 'string') {
+    const resolved = resolveJsonPointer(root, current.$ref);
+    if (!resolved) break;
+    current = resolved;
   }
 
-  return defaultItem;
+  // Prefer the first non-null branch for unions.
+  const union = current?.anyOf || current?.oneOf;
+  if (Array.isArray(union) && union.length > 0) {
+    const nonNull = union.find((s: any) => {
+      const t = s?.type;
+      if (t === 'null') return false;
+      if (Array.isArray(t) && t.includes('null') && t.length === 1) return false;
+      return true;
+    });
+    if (nonNull) return normalizeSchema(nonNull, root);
+  }
+
+  // If allOf is present, pick the first schema (good enough for our prototype usage).
+  if (Array.isArray(current?.allOf) && current.allOf.length > 0) {
+    return normalizeSchema(current.allOf[0], root);
+  }
+
+  return current;
+}
+
+const createDefaultUsingSchema = (schema: AnyJsonSchema, rootSchema: AnyJsonSchema): any => {
+  const resolved = normalizeSchema(schema, rootSchema);
+
+  if (resolved?.default !== undefined) return resolved.default;
+  if (resolved?.const !== undefined) return resolved.const;
+  if (Array.isArray(resolved?.enum) && resolved.enum.length > 0) return resolved.enum[0];
+
+  // Create a default item based on the schema
+  if (resolved?.type === 'object' && resolved.properties) {
+    const defaultItem: any = {};
+    for (const key in resolved.properties) {
+      const propSchema = normalizeSchema(resolved.properties[key], rootSchema);
+
+      if (propSchema?.default !== undefined) {
+        defaultItem[key] = propSchema.default;
+        continue;
+      }
+
+      if (propSchema?.const !== undefined) {
+        defaultItem[key] = propSchema.const;
+        continue;
+      }
+
+      if (Array.isArray(propSchema?.enum) && propSchema.enum.length > 0) {
+        defaultItem[key] = propSchema.enum[0];
+        continue;
+      }
+
+      if (propSchema?.type === 'string') {
+        if (propSchema.format === 'email') defaultItem[key] = 'user@example.com';
+        else if (typeof propSchema.minLength === 'number' && propSchema.minLength > 0) defaultItem[key] = 'New employee';
+        else defaultItem[key] = '';
+        continue;
+      }
+
+      if (propSchema?.type === 'number' || propSchema?.type === 'integer') {
+        defaultItem[key] = typeof propSchema.minimum === 'number' ? propSchema.minimum : 0;
+        continue;
+      }
+
+      if (propSchema?.type === 'boolean') {
+        defaultItem[key] = false;
+        continue;
+      }
+
+      if (propSchema?.type === 'object') {
+        defaultItem[key] = createDefaultUsingSchema(propSchema, rootSchema);
+        continue;
+      }
+
+      if (propSchema?.type === 'array') {
+        defaultItem[key] = [];
+        continue;
+      }
+
+      defaultItem[key] = null;
+    }
+
+    return defaultItem;
+  }
+
+  if (resolved?.type === 'array') {
+    return [];
+  }
+
+  if (resolved?.type === 'string') return '';
+  if (resolved?.type === 'number' || resolved?.type === 'integer') return typeof resolved.minimum === 'number' ? resolved.minimum : 0;
+  if (resolved?.type === 'boolean') return false;
+
+  return null;
 }
 
 // Helper to set nested value by JSON-path ($.prop or prop.nested)
@@ -59,31 +154,46 @@ function setByPath(json: any, path: string, value: any) {
 }
 
 // Extract field type info from JSON Schema for coercion
-function getFieldType(schema: JSONSchemaType<any>, path: string): { type: string; schema: JSONSchemaType<any> } | null {
+function getFieldType(
+  schema: JSONSchemaType<any>,
+  path: string
+): { type: string; schema: JSONSchemaType<any> } | null {
   // Remove leading $ if present
   let cleanPath = path.startsWith('$.') ? path.substring(2) : path.startsWith('$') ? path.substring(1) : path;
 
-  // Remove array notation stuff if present
-  cleanPath = cleanPath.replace(/\[\d*\]/, '');
+  // Remove any array indices like [0]
+  cleanPath = cleanPath.replace(/\[\d*\]/g, '');
 
-  const parts = cleanPath.split('.');
+  const parts = cleanPath.split('.').filter(Boolean);
   let current: any = schema;
   if (!current) return null;
 
   for (const part of parts) {
-    if (current.type === 'object') {
+    current = normalizeSchema(current, schema);
+
+    if (current?.type === 'object' && current.properties) {
       current = current.properties[part];
-    } else if (current.type === 'array' && current.items.type === 'object') {
-      current = current.items.properties[part];
-    } else {
-      // non-object, non-array
+      continue;
+    }
+
+    if (current?.type === 'array' && current.items) {
+      const items = normalizeSchema(current.items, schema);
+      if (items?.type === 'object' && items.properties) {
+        current = items.properties[part];
+        continue;
+      }
       return null;
     }
+
+    // non-object, non-array
+    return null;
   }
 
+  current = normalizeSchema(current, schema);
+
   return {
-    type: current.type || 'string',
-    schema: current
+    type: current?.type || 'string',
+    schema: current,
   };
 }
 
@@ -115,7 +225,9 @@ export default async function Page(
   }
 
   if (!spec || !entity) {
-    return <div data-testid="skeleton-wip">WIP</div>;
+    return <FormShell>
+      <div data-testid="skeleton-wip">WIP</div>
+    </FormShell>
   }
 
   const specNonNull = spec as FormViewSpec;
@@ -254,7 +366,7 @@ export default async function Page(
 
     // Navigate through schema to find the array field schema, and create a default entry
     const itemSchema = getFieldType(specNonNull.schema, fieldPath)?.schema.items;
-    const defaultItem: any = createDefaultUsingSchema(itemSchema);
+    const defaultItem: any = createDefaultUsingSchema(itemSchema, specNonNull.schema);
 
     current[arrayFieldName].push(defaultItem);
 
@@ -335,7 +447,7 @@ export default async function Page(
 
   return (
     <FormShell
-      action={submitAction}
+      submitAction={submitAction}
       deleteAction={specNonNull.deleteAction ? deleteAction : undefined}
       arrayAddAction={arrayAddAction}
       arrayRemoveAction={arrayRemoveAction}

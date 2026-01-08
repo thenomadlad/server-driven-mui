@@ -103,7 +103,7 @@ export function FormViewServerRenderer<T>({ spec, entity }: { spec: FormViewSpec
             })}
             {(!arrayValue || arrayValue.length === 0) && (
               <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                No items yet. Click "Add {fieldName}" to create one.
+                No items yet. Click {'"'}Add {fieldName}{'"'} to create one.
               </Typography>
             )}
           </Box>
